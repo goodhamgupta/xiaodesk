@@ -6,6 +6,8 @@ apps/fixtures/data
 *.db-wal
 runs
 images/*.qcow2
+images/*.qcow2.bak
+images/*.raw
 images/*.img
 images/*.tar.xz
 images/*.tgz

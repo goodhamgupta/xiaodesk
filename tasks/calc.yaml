@@ -1,0 +1,116 @@
+pack: calc
+name: OSWorld Calc
+description: |
+  LibreOffice Calc tasks in the OSWorld / OSWorld-Verified office slice.
+  OSWorld (xlang-ai/OSWorld) scores this family near the bottom: single-app
+  agents landed around 14%, and Calc items were often 0. trycua's OSWorld-Verified
+  runner (hud-evals/OSWorld-Verified) fans the same execution-based office tasks
+  out with max_concurrent set to the machine, not a fixed 20.
+  Pass means the ODS on the guest desktop has the formulas, cached values,
+  frozen header, and currency or percent formats. No model judge.
+
+jobs:
+  - id: calc-revenue
+    name: Regional revenue, tax, and net
+    description: Revenue, 8% tax, net, grand total, and a SUMIF summary by region.
+    goal: Add Revenue, Tax, and Net columns, a Grand Net, and a Summary sheet of SUMIF nets. Save regional-sales.ods.
+    params:
+      task_file: tasks/osworld/calc-revenue.json
+    eval:
+      type: composite
+      checks:
+        - name: workbook
+          type: ods_workbook
+          endpoint: /api/artifacts/calc-revenue
+          task_file: tasks/osworld/calc-revenue.json
+  - id: calc-profit
+    name: Weekly profit and margin
+    description: OSWorld libreoffice_calc 357ef137 shape. Profit, margin, total, SUMIF by rep.
+    goal: Add Profit and Margin, total them, and summarize each rep with SUMIF. Save weekly-profit.ods.
+    params:
+      task_file: tasks/osworld/calc-profit.json
+    eval:
+      type: composite
+      checks:
+        - name: workbook
+          type: ods_workbook
+          endpoint: /api/artifacts/calc-profit
+          task_file: tasks/osworld/calc-profit.json
+  - id: calc-overtime
+    name: Payroll regular, overtime, gross
+    description: MIN/MAX overtime pay, department SUMIF, currency formats.
+    goal: Compute regular, overtime, and gross pay, then SUMIF by department. Save payroll.ods.
+    params:
+      task_file: tasks/osworld/calc-overtime.json
+    eval:
+      type: composite
+      checks:
+        - name: workbook
+          type: ods_workbook
+          endpoint: /api/artifacts/calc-overtime
+          task_file: tasks/osworld/calc-overtime.json
+  - id: calc-invoice
+    name: Discounted invoices with tax
+    description: Line discount, 8.25% tax, amount due, customer SUMIF.
+    goal: Compute line, tax, and due, then SUMIF by customer. Save invoices-due.ods.
+    params:
+      task_file: tasks/osworld/calc-invoice.json
+    eval:
+      type: composite
+      checks:
+        - name: workbook
+          type: ods_workbook
+          endpoint: /api/artifacts/calc-invoice
+          task_file: tasks/osworld/calc-invoice.json
+  - id: calc-reorder
+    name: Inventory extended cost and reorder flag
+    description: Extended cost plus a YES/NO reorder IF, category SUMIF.
+    goal: Add extended cost and a reorder flag, then SUMIF by category. Save inventory-reorder.ods.
+    params:
+      task_file: tasks/osworld/calc-reorder.json
+    eval:
+      type: composite
+      checks:
+        - name: workbook
+          type: ods_workbook
+          endpoint: /api/artifacts/calc-reorder
+          task_file: tasks/osworld/calc-reorder.json
+  - id: calc-grades
+    name: Section averages and letter grades
+    description: Nested IF letter grades, AVERAGEIF by section, COUNTIF by letter.
+    goal: Average the three scores, assign a letter, then summarize sections and letters. Save grades-final.ods.
+    params:
+      task_file: tasks/osworld/calc-grades.json
+    eval:
+      type: composite
+      checks:
+        - name: workbook
+          type: ods_workbook
+          endpoint: /api/artifacts/calc-grades
+          task_file: tasks/osworld/calc-grades.json
+  - id: calc-budget
+    name: Budget versus actual
+    description: Variance, percent variance, OVER/OK flag, department SUMIF.
+    goal: Compute variance, variance percent, and a flag, then SUMIF by department. Save budget-variance.ods.
+    params:
+      task_file: tasks/osworld/calc-budget.json
+    eval:
+      type: composite
+      checks:
+        - name: workbook
+          type: ods_workbook
+          endpoint: /api/artifacts/calc-budget
+          task_file: tasks/osworld/calc-budget.json
+  - id: calc-shipping
+    name: Zone shipping with fuel and surcharge
+    description: Weight-tier surcharge IF, fuel percent, zone SUMIF.
+    goal: Compute base, fuel, surcharge, and due, then SUMIF by zone. Save shipments-due.ods.
+    params:
+      task_file: tasks/osworld/calc-shipping.json
+    eval:
+      type: composite
+      checks:
+        - name: workbook
+          type: ods_workbook
+          endpoint: /api/artifacts/calc-shipping
+          task_file: tasks/osworld/calc-shipping.json

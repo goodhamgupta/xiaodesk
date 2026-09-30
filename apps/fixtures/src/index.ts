@@ -1,6 +1,9 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import { mkdirSync, createReadStream, existsSync, writeFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { initSchema, resetDatabase, db } from './db/schema.js';
 import { seedAll } from './seed/index.js';
 import onboardingRoutes from './routes/onboarding.js';
@@ -107,6 +110,40 @@ app.post('/api/reset', (_req, res) => {
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+const artifactDir = join(dirname(fileURLToPath(import.meta.url)), '../../../runs/artifacts');
+
+app.post('/api/artifacts/:id', express.raw({ type: '*/*', limit: '20mb' }), (req, res) => {
+  const id = req.params.id;
+  if (!/^[a-z0-9-]{1,64}$/.test(id)) {
+    res.status(400).json({ ok: false, error: 'bad artifact id' });
+    return;
+  }
+  const body = req.body;
+  if (!Buffer.isBuffer(body) || body.length === 0) {
+    res.status(400).json({ ok: false, error: 'empty body' });
+    return;
+  }
+  mkdirSync(artifactDir, { recursive: true });
+  const file = join(artifactDir, `${id}.ods`);
+  writeFileSync(file, body);
+  res.json({ ok: true, id, bytes: body.length });
+});
+
+app.get('/api/artifacts/:id', (req, res) => {
+  const id = req.params.id;
+  if (!/^[a-z0-9-]{1,64}$/.test(id)) {
+    res.status(400).json({ ok: false, error: 'bad artifact id' });
+    return;
+  }
+  const file = join(artifactDir, `${id}.ods`);
+  if (!existsSync(file)) {
+    res.status(404).json({ ok: false, error: 'missing artifact' });
+    return;
+  }
+  res.setHeader('Content-Type', 'application/vnd.oasis.opendocument.spreadsheet');
+  createReadStream(file).pipe(res);
 });
 
 function ensureSeeded() {

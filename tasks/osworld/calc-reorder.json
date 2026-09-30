@@ -1,0 +1,44 @@
+{
+  "id": "calc-reorder",
+  "name": "Inventory extended cost and reorder flag",
+  "window_title": "OSWorld calc-reorder",
+  "desktop_color": "1d2c3b",
+  "csv_name": "inventory.csv",
+  "starter_name": "inventory-source.ods",
+  "ods_name": "inventory-reorder.ods",
+  "sheet": "Stock",
+  "note_column": "I",
+  "data_rows": 8,
+  "goal": "OSWorld Calc: inventory is open. Extended = Stock * UnitCost, formatted as currency. Reorder is IF(Stock < ReorderPoint, \"YES\", \"NO\"). SUM Extended at the bottom and freeze the header. Summary sheet: SUMIF Extended for Hardware and Cable. Save inventory-reorder.ods.",
+  "csv": "Sku,Category,Stock,ReorderPoint,UnitCost\nBOLT,Hardware,40,50,0.35\nNUT,Hardware,80,30,0.15\nCABLE,Cable,12,20,8.50\nPLUG,Cable,25,10,2.25\nHINGE,Hardware,5,15,3.40\nTAPE,Cable,100,40,1.10\nWASHER,Hardware,18,18,0.20\nCLAMP,Cable,7,12,4.75",
+  "columns": [
+    {"col": "F", "header": "Extended", "formula": "=C{row}*E{row}", "format": "currency"},
+    {"col": "G", "header": "Reorder", "formula": "=IF(C{row}<D{row},\"YES\",\"NO\")"}
+  ],
+  "grand": {"label_cell": "A11", "label": "Inventory Value", "value_cell": "F11", "formula": "=SUM(F2:F9)", "format": "currency"},
+  "freeze_header": true,
+  "summary": {
+    "sheet": "Summary",
+    "format": "currency",
+    "headers": ["Category", "Extended"],
+    "rows": [
+      {"values": {"A": "Hardware"}, "formulas": {"B": "=SUMIF(Stock.B2:B9,\"Hardware\",Stock.F2:F9)"}},
+      {"values": {"A": "Cable"}, "formulas": {"B": "=SUMIF(Stock.B2:B9,\"Cable\",Stock.F2:F9)"}}
+    ]
+  },
+  "expect": {
+    "sheets": ["Stock", "Summary"],
+    "freeze_header": true,
+    "styles_contain": ["currency"],
+    "formulas": [
+      {"sheet": "Stock", "cell": "F2", "contains": "C2*E2", "value": 14},
+      {"sheet": "Stock", "cell": "F9", "contains": "C9*E9", "value": 33.25},
+      {"sheet": "Stock", "cell": "G2", "contains": "IF(C2<D2,\"YES\",\"NO\")"},
+      {"sheet": "Stock", "cell": "G3", "contains": "IF(C3<D3,\"YES\",\"NO\")"},
+      {"sheet": "Stock", "cell": "G9", "contains": "IF(C9<D9,\"YES\",\"NO\")"},
+      {"sheet": "Stock", "cell": "F11", "contains": "SUM(F2:F9)"},
+      {"sheet": "Summary", "cell": "B2", "contains": "SUMIF(Stock.B2:B9,\"Hardware\",Stock.F2:F9)"},
+      {"sheet": "Summary", "cell": "B3", "contains": "SUMIF(Stock.B2:B9,\"Cable\",Stock.F2:F9)"}
+    ]
+  }
+}

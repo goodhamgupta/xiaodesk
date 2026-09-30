@@ -1,0 +1,49 @@
+{
+  "id": "calc-invoice",
+  "name": "Discounted invoices with tax",
+  "window_title": "OSWorld calc-invoice",
+  "desktop_color": "3b2e1d",
+  "csv_name": "invoices.csv",
+  "starter_name": "invoices-source.ods",
+  "ods_name": "invoices-due.ods",
+  "sheet": "Lines",
+  "note_column": "J",
+  "data_rows": 8,
+  "goal": "OSWorld Calc: invoices are open. Line = Qty * Price * (1 - DiscountPct). Tax = Line * 8.25%. Due = Line + Tax. Format Line, Tax, and Due as currency and DiscountPct as percent. SUM Due at the bottom and freeze the header. Summary sheet: SUMIF Due for Acme, Northwind, and Globex. Save invoices-due.ods.",
+  "csv": "Customer,Sku,Qty,Price,DiscountPct\nAcme,A1,4,120,0.10\nAcme,B2,2,45,0\nNorthwind,A1,6,120,0.05\nNorthwind,C3,10,15,0.15\nGlobex,B2,8,45,0\nGlobex,C3,3,15,0.20\nAcme,C3,5,15,0\nNorthwind,B2,1,45,0.10",
+  "formats": [
+    {"col": "E", "format": "percent"}
+  ],
+  "columns": [
+    {"col": "F", "header": "Line", "formula": "=C{row}*D{row}*(1-E{row})", "format": "currency"},
+    {"col": "G", "header": "Tax", "formula": "=F{row}*0.0825", "format": "currency"},
+    {"col": "H", "header": "Due", "formula": "=F{row}+G{row}", "format": "currency"}
+  ],
+  "grand": {"label_cell": "A11", "label": "Total Due", "value_cell": "H11", "formula": "=SUM(H2:H9)", "format": "currency"},
+  "freeze_header": true,
+  "summary": {
+    "sheet": "Summary",
+    "format": "currency",
+    "headers": ["Customer", "Due"],
+    "rows": [
+      {"values": {"A": "Acme"}, "formulas": {"B": "=SUMIF(Lines.A2:A9,\"Acme\",Lines.H2:H9)"}},
+      {"values": {"A": "Northwind"}, "formulas": {"B": "=SUMIF(Lines.A2:A9,\"Northwind\",Lines.H2:H9)"}},
+      {"values": {"A": "Globex"}, "formulas": {"B": "=SUMIF(Lines.A2:A9,\"Globex\",Lines.H2:H9)"}}
+    ]
+  },
+  "expect": {
+    "sheets": ["Lines", "Summary"],
+    "freeze_header": true,
+    "styles_contain": ["currency", "percentage"],
+    "formulas": [
+      {"sheet": "Lines", "cell": "F2", "contains": "C2*D2*(1-E2)", "value": 432},
+      {"sheet": "Lines", "cell": "G2", "contains": "F2*0.0825", "value": 35.64},
+      {"sheet": "Lines", "cell": "H2", "contains": "F2+G2", "value": 467.64},
+      {"sheet": "Lines", "cell": "H9", "contains": "F9+G9"},
+      {"sheet": "Lines", "cell": "H11", "contains": "SUM(H2:H9)"},
+      {"sheet": "Summary", "cell": "B2", "contains": "SUMIF(Lines.A2:A9,\"Acme\",Lines.H2:H9)"},
+      {"sheet": "Summary", "cell": "B3", "contains": "SUMIF(Lines.A2:A9,\"Northwind\",Lines.H2:H9)"},
+      {"sheet": "Summary", "cell": "B4", "contains": "SUMIF(Lines.A2:A9,\"Globex\",Lines.H2:H9)"}
+    ]
+  }
+}

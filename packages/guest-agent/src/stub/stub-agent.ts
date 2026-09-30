@@ -3,7 +3,7 @@ import type { MockAppServer, StubAction, AgentEvent } from '../app-server/mock-s
 
 export interface JobCard {
   id: string;
-  pack: 'onboarding' | 'support' | 'booking';
+  pack: 'onboarding' | 'support' | 'booking' | 'calc';
   name: string;
   goal: string;
   params: Record<string, unknown>;

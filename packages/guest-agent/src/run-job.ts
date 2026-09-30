@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process';
+import { join } from 'path';
 import { createBrowserTool, type BrowserTool } from './browser/browser-tool.js';
 import { createMockAppServer } from './app-server/mock-server.js';
 import { createStubAgent, type JobCard } from './stub/stub-agent.js';
@@ -56,7 +57,31 @@ async function launchBrowser(): Promise<{ browser: BrowserTool; lightpanda: Chil
   return { browser, lightpanda: null };
 }
 
+async function runDesktopCalc(job: JobCard, onEvent?: (event: GuestEvent) => void): Promise<void> {
+  const taskFile = String(job.params.task_file || '');
+  if (!taskFile) throw new Error(`calc job ${job.id} missing params.task_file`);
+  const script = join(process.cwd(), 'scripts/guest/solve_calc.py');
+  onEvent?.({ type: 'tool_call', data: { tool: 'libreoffice_calc', task_file: taskFile } });
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('/usr/bin/python3', [script, taskFile], {
+      env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stdout.on('data', (chunk) => onEvent?.({ type: 'tool_result', data: { text: String(chunk) } }));
+    child.stderr.on('data', (chunk) => onEvent?.({ type: 'tool_result', data: { text: String(chunk) } }));
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`calc solver exited ${code}`));
+    });
+  });
+}
+
 export async function runGuestJob(job: JobCard, onEvent?: (event: GuestEvent) => void): Promise<void> {
+  if (job.pack === 'calc') {
+    await runDesktopCalc(job, onEvent);
+    return;
+  }
   let browser: BrowserTool | null = null;
   let lightpanda: ChildProcess | null = null;
   try {

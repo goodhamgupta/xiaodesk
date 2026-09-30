@@ -2,7 +2,7 @@
 
 Training lab for packaging **Codex App Server** inside a guest, fanning browser-use jobs out across those guests, and scoring them with deterministic checks. The lab assumes you already know why a microVM-per-user boundary exists. It does not build a VMM, and it is not a sandbox product.
 
-This is **browser-use over CDP** (Lightpanda, or Playwright Chromium when that binary is absent). It is not screenshot-to-click desktop computer-use.
+Browser jobs use CDP (Lightpanda, or Playwright Chromium when that binary is absent). The OSWorld Calc pack is desktop work on the guest VGA screen: LibreOffice Calc, scored from the saved spreadsheet.
 
 ## How this differs from OpenShell
 
@@ -46,7 +46,7 @@ flowchart LR
 | `packages/orchestrator` | Queue, RAM admission, fan-out runner, CLI + HTML/SSE dashboard. |
 | `packages/guest-agent` | Mock app-server (`initialize`, `thread/start`, `turn/start`), CDP browser tool, scripted stub agent. |
 | `packages/evals` | DB and HTTP checkers. No LLM judge. |
-| `tasks/` | OSWorld-style job cards: goal, setup, executable eval. `batch-24.yaml` is the sample fan-out. |
+| `tasks/` | Job cards and executable evals. `batch-24.yaml` is the browser fan-out. `tasks/osworld/` is the Calc pack. |
 | `packages/agents-api` | Local Agents API: self-hosted sessions, signed webhooks, executor WebSocket. |
 | `drivers/lume` | Default guest. `lume` on Apple Silicon (Virtualization.framework). QEMU on Linux (KVM, or TCG when nested KVM cannot boot). |
 | `drivers/process` | Fast path: one Node process per job, stdio JSON-RPC. |
@@ -124,6 +124,17 @@ Job cards live in `tasks/*.yaml`. A pass is a row, a joined query, or a JSON API
 | Portal onboarding | User row for that persona (name, plan, terms timestamp), a session row, a `welcome-guide.pdf` download row. |
 | Ticket triage | Status, tags, assignee, and reply body match the gold values on that `ticket_id`. |
 | Constrained booking | Reservation for that guest matches date, party size, accessibility, and `price_per_hour`. |
+| OSWorld Calc | ODS uploaded by the guest. Formulas, cached values, frozen header, and currency or percent styles must match `tasks/osworld/*.json`. |
+
+Calc is the hard slice of [OSWorld](https://github.com/xlang-ai/OSWorld) and of trycua's [OSWorld-Verified](https://huggingface.co/datasets/hud-evals/OSWorld-Verified) set: multi-step spreadsheet edits (SUM, SUMIF, AVERAGEIF, nested IF, MIN/MAX), a second sheet, number formats, and a frozen header. Early OSWorld agents sat near 12% overall and often at 0 on Calc. The lab still uses a scripted solver (no API key). The task and the execution check are the benchmark, not an LLM judge.
+
+On this Linux host the guests are QEMU TCG. Nested KVM does not boot. A 15GB machine fits about eight 1GB guests; the wall script measures available RAM and stops short of OOM:
+
+```bash
+./scripts/boot-osworld-wall.sh
+```
+
+Framebuffers show up on the dashboard. Click a screen to type. Double-click the title for one guest full size. `scripts/grade-osworld.ts` scores the ODS files the guests POST to `/api/artifacts/:id`.
 
 `booking-008` loads a slot, marks it sold out, submits, gets `slot_unavailable`, backs off, and books the next slot that still satisfies the constraints. The host queue is the other backoff: jobs sit in the queue while admission is closed.
 

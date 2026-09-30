@@ -1,0 +1,47 @@
+{
+  "id": "calc-shipping",
+  "name": "Zone shipping with fuel and surcharge",
+  "window_title": "OSWorld calc-shipping",
+  "desktop_color": "1b3030",
+  "csv_name": "shipments.csv",
+  "starter_name": "shipments-source.ods",
+  "ods_name": "shipments-due.ods",
+  "sheet": "Shipments",
+  "note_column": "J",
+  "data_rows": 8,
+  "goal": "OSWorld Calc: shipments are open. Base = WeightKg * RatePerKg. Fuel = Base * 12%. Surcharge = IF(WeightKg > 20, 15, 0). Due = Base + Fuel + Surcharge. Format Base, Fuel, Surcharge, and Due as currency. SUM Due, freeze the header, and add a Summary sheet with SUMIF of Due for East and West. Save shipments-due.ods.",
+  "csv": "Order,Zone,WeightKg,RatePerKg\n1001,East,8,2.50\n1002,East,24,2.50\n1003,West,15,3.10\n1004,West,30,3.10\n1005,East,21,2.50\n1006,West,5,3.10\n1007,East,12,2.50\n1008,West,22,3.10",
+  "columns": [
+    {"col": "E", "header": "Base", "formula": "=C{row}*D{row}", "format": "currency"},
+    {"col": "F", "header": "Fuel", "formula": "=E{row}*0.12", "format": "currency"},
+    {"col": "G", "header": "Surcharge", "formula": "=IF(C{row}>20,15,0)", "format": "currency"},
+    {"col": "H", "header": "Due", "formula": "=E{row}+F{row}+G{row}", "format": "currency"}
+  ],
+  "grand": {"label_cell": "A11", "label": "Total Due", "value_cell": "H11", "formula": "=SUM(H2:H9)", "format": "currency"},
+  "freeze_header": true,
+  "summary": {
+    "sheet": "Summary",
+    "format": "currency",
+    "headers": ["Zone", "Due"],
+    "rows": [
+      {"values": {"A": "East"}, "formulas": {"B": "=SUMIF(Shipments.B2:B9,\"East\",Shipments.H2:H9)"}},
+      {"values": {"A": "West"}, "formulas": {"B": "=SUMIF(Shipments.B2:B9,\"West\",Shipments.H2:H9)"}}
+    ]
+  },
+  "expect": {
+    "sheets": ["Shipments", "Summary"],
+    "freeze_header": true,
+    "styles_contain": ["currency"],
+    "formulas": [
+      {"sheet": "Shipments", "cell": "E2", "contains": "C2*D2", "value": 20},
+      {"sheet": "Shipments", "cell": "F2", "contains": "E2*0.12", "value": 2.4},
+      {"sheet": "Shipments", "cell": "G2", "contains": "IF(C2>20,15,0)", "value": 0},
+      {"sheet": "Shipments", "cell": "G3", "contains": "IF(C3>20,15,0)", "value": 15},
+      {"sheet": "Shipments", "cell": "H2", "contains": "E2+F2+G2", "value": 22.4},
+      {"sheet": "Shipments", "cell": "H9", "contains": "E9+F9+G9"},
+      {"sheet": "Shipments", "cell": "H11", "contains": "SUM(H2:H9)"},
+      {"sheet": "Summary", "cell": "B2", "contains": "SUMIF(Shipments.B2:B9,\"East\",Shipments.H2:H9)"},
+      {"sheet": "Summary", "cell": "B3", "contains": "SUMIF(Shipments.B2:B9,\"West\",Shipments.H2:H9)"}
+    ]
+  }
+}

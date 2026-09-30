@@ -128,6 +128,7 @@ async function main(): Promise<void> {
     ...loadPack(join(repoRoot, 'tasks/onboarding.yaml')),
     ...loadPack(join(repoRoot, 'tasks/support.yaml')),
     ...loadPack(join(repoRoot, 'tasks/booking.yaml')),
+    ...loadPack(join(repoRoot, 'tasks/calc.yaml')),
   ]);
   console.log(`enqueued ${jobs.length} jobs`);
 

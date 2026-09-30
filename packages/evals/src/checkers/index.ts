@@ -1,8 +1,9 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { EvalCheck, EvalCheckResult, JobCard } from '../types.js';
 import { DbChecker } from './db-checker.js';
 import { ApiChecker } from './api-checker.js';
+import { gradeWorkbook, readOds, type OdsExpect } from './ods.js';
 
 export interface EvalRunnerConfig {
   fixturesUrl: string;
@@ -62,6 +63,9 @@ export class EvalRunner {
       case 'url_matches':
         return this.checkUrlMatches(check);
 
+      case 'ods_workbook':
+        return this.checkOds(check);
+
       default:
         return {
           name: check.name,
@@ -117,6 +121,26 @@ export class EvalRunner {
 
   setSessionCookie(cookie: string): void {
     this.config.sessionCookie = cookie;
+  }
+
+  private async checkOds(check: EvalCheck): Promise<EvalCheckResult> {
+    if (!check.endpoint || !check.task_file) {
+      return { name: check.name, passed: false, error: 'ods_workbook needs endpoint and task_file' };
+    }
+    const url = check.endpoint.startsWith('http') ? check.endpoint : `${this.config.fixturesUrl}${check.endpoint}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      return { name: check.name, passed: false, error: `artifact HTTP ${response.status}`, actual: { url } };
+    }
+    const task = JSON.parse(readFileSync(check.task_file, 'utf8')) as { expect: OdsExpect };
+    const errors = gradeWorkbook(readOds(Buffer.from(await response.arrayBuffer())), task.expect);
+    return {
+      name: check.name,
+      passed: errors.length === 0,
+      expected: task.expect,
+      actual: errors,
+      error: errors[0],
+    };
   }
 }
 

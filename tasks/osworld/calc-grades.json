@@ -1,0 +1,45 @@
+{
+  "id": "calc-grades",
+  "name": "Section averages and letter grades",
+  "window_title": "OSWorld calc-grades",
+  "desktop_color": "3b1d2e",
+  "csv_name": "grades.csv",
+  "starter_name": "grades-source.ods",
+  "ods_name": "grades-final.ods",
+  "sheet": "Grades",
+  "note_column": "I",
+  "data_rows": 10,
+  "goal": "OSWorld Calc: grades are open. Average is (Midterm + Final + Lab) / 3, formatted with two decimals. Letter is A at 90, B at 80, C at 70, otherwise F, using nested IF. Freeze the header. Class average is AVERAGE of the Average column. Summary sheet: AVERAGEIF of Average by section A and B, then COUNTIF of each letter. Save grades-final.ods.",
+  "csv": "Student,Section,Midterm,Final,Lab\nAda,A,95,91,93\nBea,A,88,84,86\nCam,A,72,70,74\nDee,B,61,58,64\nEli,B,91,89,90\nFay,B,79,81,77\nGus,A,55,60,58\nHana,B,84,80,82\nIvo,A,90,92,88\nJun,B,68,71,69",
+  "columns": [
+    {"col": "F", "header": "Average", "formula": "=(C{row}+D{row}+E{row})/3", "format": "number"},
+    {"col": "G", "header": "Letter", "formula": "=IF(F{row}>=90,\"A\",IF(F{row}>=80,\"B\",IF(F{row}>=70,\"C\",\"F\")))"}
+  ],
+  "grand": {"label_cell": "A13", "label": "Class average", "value_cell": "F13", "formula": "=AVERAGE(F2:F11)", "format": "number"},
+  "freeze_header": true,
+  "summary": {
+    "sheet": "Summary",
+    "headers": ["Section", "Average", "Letter", "Count"],
+    "rows": [
+      {"values": {"A": "A", "C": "A"}, "formulas": {"B": "=AVERAGEIF(Grades.B2:B11,\"A\",Grades.F2:F11)", "D": "=COUNTIF(Grades.G2:G11,\"A\")"}},
+      {"values": {"A": "B", "C": "B"}, "formulas": {"B": "=AVERAGEIF(Grades.B2:B11,\"B\",Grades.F2:F11)", "D": "=COUNTIF(Grades.G2:G11,\"B\")"}},
+      {"values": {"C": "C"}, "formulas": {"D": "=COUNTIF(Grades.G2:G11,\"C\")"}},
+      {"values": {"C": "F"}, "formulas": {"D": "=COUNTIF(Grades.G2:G11,\"F\")"}}
+    ]
+  },
+  "expect": {
+    "sheets": ["Grades", "Summary"],
+    "freeze_header": true,
+    "formulas": [
+      {"sheet": "Grades", "cell": "F2", "contains": "(C2+D2+E2)/3", "value": 93},
+      {"sheet": "Grades", "cell": "F11", "contains": "(C11+D11+E11)/3"},
+      {"sheet": "Grades", "cell": "G2", "contains": "IF(F2>=90,\"A\",IF(F2>=80,\"B\",IF(F2>=70,\"C\",\"F\")))"},
+      {"sheet": "Grades", "cell": "G11", "contains": "IF(F11>=90,\"A\",IF(F11>=80,\"B\",IF(F11>=70,\"C\",\"F\")))"},
+      {"sheet": "Grades", "cell": "F13", "contains": "AVERAGE(F2:F11)", "value": 78, "tolerance": 0.05},
+      {"sheet": "Summary", "cell": "B2", "contains": "AVERAGEIF(Grades.B2:B11,\"A\",Grades.F2:F11)", "value": 79.7333, "tolerance": 0.05},
+      {"sheet": "Summary", "cell": "B3", "contains": "AVERAGEIF(Grades.B2:B11,\"B\",Grades.F2:F11)"},
+      {"sheet": "Summary", "cell": "D2", "contains": "COUNTIF(Grades.G2:G11,\"A\")", "value": 3},
+      {"sheet": "Summary", "cell": "D5", "contains": "COUNTIF(Grades.G2:G11,\"F\")", "value": 3}
+    ]
+  }
+}

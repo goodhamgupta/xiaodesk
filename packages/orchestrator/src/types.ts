@@ -1,6 +1,6 @@
 export interface JobCard {
   id: string;
-  pack: 'onboarding' | 'support' | 'booking';
+  pack: 'onboarding' | 'support' | 'booking' | 'calc';
   name: string;
   description: string;
   goal: string;
@@ -28,7 +28,7 @@ export interface EvalSpec {
 
 export interface EvalCheck {
   name: string;
-  type: 'db_row_exists' | 'db_row_matches' | 'db_query' | 'api_response' | 'file_exists' | 'cookie_exists' | 'url_matches';
+  type: 'db_row_exists' | 'db_row_matches' | 'db_query' | 'api_response' | 'file_exists' | 'cookie_exists' | 'url_matches' | 'ods_workbook';
   query?: string;
   params?: unknown[];
   table?: string;
@@ -39,6 +39,7 @@ export interface EvalCheck {
   expected?: Record<string, unknown>;
   path?: string;
   cookie_name?: string;
+  task_file?: string;
 }
 
 export type JobStatus = 'pending' | 'queued' | 'running' | 'passed' | 'failed' | 'cancelled' | 'timeout';

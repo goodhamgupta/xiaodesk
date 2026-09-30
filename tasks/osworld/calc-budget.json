@@ -1,0 +1,45 @@
+{
+  "id": "calc-budget",
+  "name": "Budget versus actual",
+  "window_title": "OSWorld calc-budget",
+  "desktop_color": "24301b",
+  "csv_name": "budget.csv",
+  "starter_name": "budget-source.ods",
+  "ods_name": "budget-variance.ods",
+  "sheet": "Budget",
+  "note_column": "I",
+  "data_rows": 8,
+  "goal": "OSWorld Calc: budget.csv is open. Variance = Actual - Budget, as currency. VarPct = IF(Budget = 0, 0, Variance / Budget), as percent. Flag is IF(Variance < 0, \"OVER\", \"OK\"). SUM Variance, freeze the header, and add a Summary sheet with SUMIF of Variance for Eng and Sales. Save budget-variance.ods.",
+  "csv": "Dept,Quarter,Budget,Actual\nEng,Q1,40000,42000\nEng,Q2,40000,38000\nSales,Q1,25000,21000\nSales,Q2,25000,27000\nEng,Q3,45000,45000\nSales,Q3,26000,30000\nEng,Q4,45000,41000\nSales,Q4,26000,24000",
+  "columns": [
+    {"col": "E", "header": "Variance", "formula": "=D{row}-C{row}", "format": "currency"},
+    {"col": "F", "header": "VarPct", "formula": "=IF(C{row}=0,0,E{row}/C{row})", "format": "percent"},
+    {"col": "G", "header": "Flag", "formula": "=IF(E{row}<0,\"OVER\",\"OK\")"}
+  ],
+  "grand": {"label_cell": "A11", "label": "Total Variance", "value_cell": "E11", "formula": "=SUM(E2:E9)", "format": "currency"},
+  "freeze_header": true,
+  "summary": {
+    "sheet": "Summary",
+    "format": "currency",
+    "headers": ["Dept", "Variance"],
+    "rows": [
+      {"values": {"A": "Eng"}, "formulas": {"B": "=SUMIF(Budget.A2:A9,\"Eng\",Budget.E2:E9)"}},
+      {"values": {"A": "Sales"}, "formulas": {"B": "=SUMIF(Budget.A2:A9,\"Sales\",Budget.E2:E9)"}}
+    ]
+  },
+  "expect": {
+    "sheets": ["Budget", "Summary"],
+    "freeze_header": true,
+    "styles_contain": ["currency", "percentage"],
+    "formulas": [
+      {"sheet": "Budget", "cell": "E2", "contains": "D2-C2", "value": 2000},
+      {"sheet": "Budget", "cell": "E3", "contains": "D3-C3", "value": -2000},
+      {"sheet": "Budget", "cell": "F2", "contains": "IF(C2=0,0,E2/C2)", "value": 0.05, "tolerance": 0.001},
+      {"sheet": "Budget", "cell": "G2", "contains": "IF(E2<0,\"OVER\",\"OK\")"},
+      {"sheet": "Budget", "cell": "G3", "contains": "IF(E3<0,\"OVER\",\"OK\")"},
+      {"sheet": "Budget", "cell": "E11", "contains": "SUM(E2:E9)"},
+      {"sheet": "Summary", "cell": "B2", "contains": "SUMIF(Budget.A2:A9,\"Eng\",Budget.E2:E9)"},
+      {"sheet": "Summary", "cell": "B3", "contains": "SUMIF(Budget.A2:A9,\"Sales\",Budget.E2:E9)"}
+    ]
+  }
+}

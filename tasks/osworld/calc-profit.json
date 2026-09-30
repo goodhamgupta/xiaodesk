@@ -1,0 +1,45 @@
+{
+  "id": "calc-profit",
+  "name": "Weekly profit and margin",
+  "window_title": "OSWorld calc-profit",
+  "desktop_color": "3b1d4a",
+  "csv_name": "weekly-sales.csv",
+  "starter_name": "weekly-sales-source.ods",
+  "ods_name": "weekly-profit.ods",
+  "sheet": "Weeks",
+  "note_column": "H",
+  "data_rows": 8,
+  "goal": "OSWorld Calc, same family as libreoffice_calc 357ef137: weekly-sales is open. Add Profit = Sales - COGS and Margin = Profit / Sales for every week. Format Profit as currency and Margin as percent. Put Total Profit under the Profit column with SUM. Freeze the header. Add a Summary sheet with SUMIF of Profit for Ana, Ben, and Cara. Save weekly-profit.ods.",
+  "csv": "Week,Rep,Sales,COGS\n1,Ana,12000,7300\n2,Ana,9800,6100\n3,Ben,14300,8900\n4,Ben,10100,6400\n5,Cara,13200,7000\n6,Cara,15400,9100\n7,Ana,11000,6800\n8,Ben,12500,7600",
+  "columns": [
+    {"col": "E", "header": "Profit", "formula": "=C{row}-D{row}", "format": "currency"},
+    {"col": "F", "header": "Margin", "formula": "=E{row}/C{row}", "format": "percent"}
+  ],
+  "grand": {"label_cell": "A11", "label": "Total Profit", "value_cell": "E11", "formula": "=SUM(E2:E9)", "format": "currency"},
+  "freeze_header": true,
+  "summary": {
+    "sheet": "Summary",
+    "format": "currency",
+    "headers": ["Rep", "Profit"],
+    "rows": [
+      {"values": {"A": "Ana"}, "formulas": {"B": "=SUMIF(Weeks.B2:B9,\"Ana\",Weeks.E2:E9)"}},
+      {"values": {"A": "Ben"}, "formulas": {"B": "=SUMIF(Weeks.B2:B9,\"Ben\",Weeks.E2:E9)"}},
+      {"values": {"A": "Cara"}, "formulas": {"B": "=SUMIF(Weeks.B2:B9,\"Cara\",Weeks.E2:E9)"}}
+    ]
+  },
+  "expect": {
+    "sheets": ["Weeks", "Summary"],
+    "freeze_header": true,
+    "styles_contain": ["currency", "percentage"],
+    "formulas": [
+      {"sheet": "Weeks", "cell": "E2", "contains": "C2-D2", "value": 4700},
+      {"sheet": "Weeks", "cell": "E9", "contains": "C9-D9", "value": 4900},
+      {"sheet": "Weeks", "cell": "F2", "contains": "E2/C2", "value": 0.391666, "tolerance": 0.001},
+      {"sheet": "Weeks", "cell": "F9", "contains": "E9/C9"},
+      {"sheet": "Weeks", "cell": "E11", "contains": "SUM(E2:E9)", "value": 39100},
+      {"sheet": "Summary", "cell": "B2", "contains": "SUMIF(Weeks.B2:B9,\"Ana\",Weeks.E2:E9)", "value": 12600},
+      {"sheet": "Summary", "cell": "B3", "contains": "SUMIF(Weeks.B2:B9,\"Ben\",Weeks.E2:E9)", "value": 14000},
+      {"sheet": "Summary", "cell": "B4", "contains": "SUMIF(Weeks.B2:B9,\"Cara\",Weeks.E2:E9)", "value": 12500}
+    ]
+  }
+}

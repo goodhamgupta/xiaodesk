@@ -1,0 +1,45 @@
+{
+  "id": "calc-overtime",
+  "name": "Payroll regular, overtime, gross",
+  "window_title": "OSWorld calc-overtime",
+  "desktop_color": "1d3b32",
+  "csv_name": "timesheet.csv",
+  "starter_name": "timesheet-source.ods",
+  "ods_name": "payroll.ods",
+  "sheet": "Payroll",
+  "note_column": "I",
+  "data_rows": 8,
+  "goal": "OSWorld Calc: timesheet is open. Regular pay is MIN(Hours, 40) * Rate. Overtime pay is MAX(0, Hours - 40) * Rate * 1.5. Gross is Regular + Overtime. Format all three as currency, SUM Gross at the bottom, and freeze the header. Summary sheet: SUMIF Gross for Ops and Sales. Save payroll.ods.",
+  "csv": "Employee,Dept,Hours,Rate\nAnn,Ops,38,25\nBo,Ops,45,25\nCy,Sales,40,30\nDi,Sales,52,30\nEd,Ops,36,22\nFae,Sales,48,28\nGil,Ops,41,24\nHui,Sales,39,32",
+  "columns": [
+    {"col": "E", "header": "Regular", "formula": "=MIN(C{row},40)*D{row}", "format": "currency"},
+    {"col": "F", "header": "Overtime", "formula": "=MAX(0,C{row}-40)*D{row}*1.5", "format": "currency"},
+    {"col": "G", "header": "Gross", "formula": "=E{row}+F{row}", "format": "currency"}
+  ],
+  "grand": {"label_cell": "A11", "label": "Total Gross", "value_cell": "G11", "formula": "=SUM(G2:G9)", "format": "currency"},
+  "freeze_header": true,
+  "summary": {
+    "sheet": "Summary",
+    "format": "currency",
+    "headers": ["Dept", "Gross"],
+    "rows": [
+      {"values": {"A": "Ops"}, "formulas": {"B": "=SUMIF(Payroll.B2:B9,\"Ops\",Payroll.G2:G9)"}},
+      {"values": {"A": "Sales"}, "formulas": {"B": "=SUMIF(Payroll.B2:B9,\"Sales\",Payroll.G2:G9)"}}
+    ]
+  },
+  "expect": {
+    "sheets": ["Payroll", "Summary"],
+    "freeze_header": true,
+    "styles_contain": ["currency"],
+    "formulas": [
+      {"sheet": "Payroll", "cell": "E2", "contains": "MIN(C2,40)*D2", "value": 950},
+      {"sheet": "Payroll", "cell": "F2", "contains": "MAX(0,C2-40)*D2*1.5", "value": 0},
+      {"sheet": "Payroll", "cell": "F3", "contains": "MAX(0,C3-40)*D3*1.5", "value": 187.5},
+      {"sheet": "Payroll", "cell": "G2", "contains": "E2+F2", "value": 950},
+      {"sheet": "Payroll", "cell": "G9", "contains": "E9+F9"},
+      {"sheet": "Payroll", "cell": "G11", "contains": "SUM(G2:G9)", "value": 9569.5},
+      {"sheet": "Summary", "cell": "B2", "contains": "SUMIF(Payroll.B2:B9,\"Ops\",Payroll.G2:G9)", "value": 3925.5},
+      {"sheet": "Summary", "cell": "B3", "contains": "SUMIF(Payroll.B2:B9,\"Sales\",Payroll.G2:G9)", "value": 5644}
+    ]
+  }
+}

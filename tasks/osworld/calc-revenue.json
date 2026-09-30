@@ -1,0 +1,49 @@
+{
+  "id": "calc-revenue",
+  "name": "Regional revenue, tax, and net",
+  "window_title": "OSWorld calc-revenue",
+  "desktop_color": "10243f",
+  "csv_name": "regional-sales.csv",
+  "starter_name": "regional-sales-source.ods",
+  "ods_name": "regional-sales.ods",
+  "sheet": "Sales",
+  "note_column": "J",
+  "data_rows": 12,
+  "goal": "OSWorld Calc: regional-sales is open. Add Revenue = Units * UnitPrice, Tax = Revenue * 8%, and Net = Revenue - Tax for every data row. Format those three columns as currency. Put Grand Net under Net with SUM. Freeze the header row. Add a Summary sheet with SUMIF of Net for North, South, West, and East. Save regional-sales.ods.",
+  "csv": "Region,Product,Units,UnitPrice\nNorth,Desk,4,220\nNorth,Chair,10,85\nNorth,Lamp,6,40\nSouth,Desk,3,220\nSouth,Chair,8,85\nSouth,Lamp,12,40\nWest,Desk,5,220\nWest,Chair,7,85\nWest,Lamp,9,40\nEast,Desk,2,220\nEast,Chair,4,85\nEast,Lamp,3,40",
+  "columns": [
+    {"col": "E", "header": "Revenue", "formula": "=C{row}*D{row}", "format": "currency"},
+    {"col": "F", "header": "Tax", "formula": "=E{row}*0.08", "format": "currency"},
+    {"col": "G", "header": "Net", "formula": "=E{row}-F{row}", "format": "currency"}
+  ],
+  "grand": {"label_cell": "A15", "label": "Grand Net", "value_cell": "G15", "formula": "=SUM(G2:G13)", "format": "currency"},
+  "freeze_header": true,
+  "summary": {
+    "sheet": "Summary",
+    "format": "currency",
+    "headers": ["Region", "Net"],
+    "rows": [
+      {"values": {"A": "North"}, "formulas": {"B": "=SUMIF(Sales.A2:A13,\"North\",Sales.G2:G13)"}},
+      {"values": {"A": "South"}, "formulas": {"B": "=SUMIF(Sales.A2:A13,\"South\",Sales.G2:G13)"}},
+      {"values": {"A": "West"}, "formulas": {"B": "=SUMIF(Sales.A2:A13,\"West\",Sales.G2:G13)"}},
+      {"values": {"A": "East"}, "formulas": {"B": "=SUMIF(Sales.A2:A13,\"East\",Sales.G2:G13)"}}
+    ]
+  },
+  "expect": {
+    "sheets": ["Sales", "Summary"],
+    "freeze_header": true,
+    "styles_contain": ["currency"],
+    "formulas": [
+      {"sheet": "Sales", "cell": "E2", "contains": "C2*D2", "value": 880},
+      {"sheet": "Sales", "cell": "E13", "contains": "C13*D13", "value": 120},
+      {"sheet": "Sales", "cell": "F2", "contains": "E2*0.08", "value": 70.4},
+      {"sheet": "Sales", "cell": "G2", "contains": "E2-F2", "value": 809.6},
+      {"sheet": "Sales", "cell": "G13", "contains": "E13-F13"},
+      {"sheet": "Sales", "cell": "G15", "contains": "SUM(G2:G13)", "value": 6205.4},
+      {"sheet": "Summary", "cell": "B2", "contains": "SUMIF(Sales.A2:A13,\"North\",Sales.G2:G13)", "value": 1812.4},
+      {"sheet": "Summary", "cell": "B3", "contains": "SUMIF(Sales.A2:A13,\"South\",Sales.G2:G13)", "value": 1674.4},
+      {"sheet": "Summary", "cell": "B4", "contains": "SUMIF(Sales.A2:A13,\"West\",Sales.G2:G13)", "value": 1890.6},
+      {"sheet": "Summary", "cell": "B5", "contains": "SUMIF(Sales.A2:A13,\"East\",Sales.G2:G13)", "value": 828}
+    ]
+  }
+}
