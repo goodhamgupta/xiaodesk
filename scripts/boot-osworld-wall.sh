@@ -33,8 +33,8 @@ TASKS=(
 )
 
 avail_kb="$(awk '/MemAvailable/ {print $2}' /proc/meminfo)"
-# Steady RSS on this TCG host is about 1.45x the -m cap once the guest has touched its pages.
-pred_kb=$(( MEM_MB * 1024 * 145 / 100 ))
+# Measured on this TCG host: a 1024MB Calc guest settles near 1.9GB RSS.
+pred_kb=$(( MEM_MB * 1024 * 185 / 100 ))
 reserve_kb=$(( 1100 * 1024 ))
 fit=$(( (avail_kb - reserve_kb) / pred_kb ))
 (( fit < 1 )) && fit=1

@@ -68,6 +68,19 @@ while True:
     )
 
 
+def lo_formula(formula: str) -> str:
+    """LibreOffice on this image parses argument separators as semicolons, and
+    cross-sheet ranges must repeat the sheet on both ends or SUMIF returns Err:508."""
+    import re
+
+    expanded = re.sub(
+        r'([A-Za-z][A-Za-z0-9]*)\.([A-Z]+\d+):([A-Z]+\d+)',
+        lambda match: f"{match.group(1)}.{match.group(2)}:{match.group(1)}.{match.group(3)}",
+        formula,
+    )
+    return expanded.replace(",", ";")
+
+
 def col_index(letter: str) -> int:
     number = 0
     for char in letter.strip().upper():
@@ -206,6 +219,8 @@ def launch_soffice(port: int) -> None:
     env["SAL_USE_VCLPLUGIN"] = "gen"
     env["UserInstallation"] = profile.as_uri()
     env["SAL_NO_JAVA"] = "1"
+    subprocess.call(["pkill", "-f", "soffice.bin"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.6)
     log_handle = open("/tmp/soffice.log", "w")
     subprocess.Popen(
         [
@@ -310,7 +325,7 @@ def solve(task: dict) -> None:
         fmt = formats.get(column.get("format", ""))
         for offset in range(data_rows):
             cell = sheet.getCellByPosition(index, offset + 1)
-            cell.setFormula(column["formula"].format(row=offset + 2))
+            cell.setFormula(lo_formula(column["formula"].format(row=offset + 2)))
             if fmt is not None:
                 cell.NumberFormat = fmt
         show_range(controller, sheet, f"{column['col']}2:{column['col']}{data_rows + 1}")
@@ -326,7 +341,7 @@ def solve(task: dict) -> None:
         sheet.getCellByPosition(label_col, label_row).setString(grand["label"])
         value_col, value_row = split_cell(grand["value_cell"])
         total = sheet.getCellByPosition(value_col, value_row)
-        total.setFormula(grand["formula"])
+        total.setFormula(lo_formula(grand["formula"]))
         grand_fmt = formats.get(grand.get("format", ""))
         if grand_fmt is not None:
             total.NumberFormat = grand_fmt
@@ -349,7 +364,7 @@ def solve(task: dict) -> None:
                 summary.getCellByPosition(col_index(letter), row_index).setString(str(value))
             for letter, formula in row.get("formulas", {}).items():
                 cell = summary.getCellByPosition(col_index(letter), row_index)
-                cell.setFormula(formula)
+                cell.setFormula(lo_formula(formula))
                 if fmt is not None and row.get("format", summary_spec.get("format")):
                     cell.NumberFormat = fmt
         controller.setActiveSheet(summary)

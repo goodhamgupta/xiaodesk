@@ -36,6 +36,11 @@ describe('ods workbook grader', () => {
     expect(normFormula('of:=SUMIF($Sales.$A$2:$Sales.$A$13;"North";$Sales.$G$2:$Sales.$G$13)')).toBe(
       'SUMIF(SALES.A2:A13,"NORTH",SALES.G2:G13)',
     );
+    expect(normFormula('of:=[.C2]*[.D2]')).toBe('C2*D2');
+    expect(normFormula('of:=SUM([.G2:.G13])')).toBe('SUM(G2:G13)');
+    expect(normFormula('of:=SUMIF([Sales.A2:Sales.A13];"North";[Sales.G2:Sales.G13])')).toBe(
+      'SUMIF(SALES.A2:A13,"NORTH",SALES.G2:G13)',
+    );
   });
 
   it('addresses cells after repeated rows and columns', () => {

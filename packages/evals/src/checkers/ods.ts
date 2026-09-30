@@ -40,6 +40,10 @@ export function normFormula(formula: string): string {
     .replace(/\s+/g, '')
     .replace(/\$/g, '')
     .toUpperCase();
+  text = text.replace(/\[\.([A-Z]+\d+):\.([A-Z]+\d+)\]/g, '$1:$2');
+  text = text.replace(/\[\.([A-Z]+\d+)\]/g, '$1');
+  text = text.replace(/\[([A-Z][A-Z0-9]*)\.([A-Z]+\d+):\.([A-Z]+\d+)\]/g, '$1.$2:$3');
+  text = text.replace(/\[([^\]]+)\]/g, '$1');
   text = text.replace(/([A-Z][A-Z0-9]*)\.([A-Z]+)(\d+):\1\.([A-Z]+)(\d+)/g, '$1.$2$3:$4$5');
   return text;
 }
@@ -153,8 +157,9 @@ export function gradeWorkbook(parts: OdsParts, expect: OdsExpect): string[] {
       errors.push(`header row is not frozen (VerticalSplitMode=${modes.join(',') || 'missing'}, VerticalSplitPosition=${positions.join(',') || 'missing'})`);
     }
   }
+  const styleBlob = `${parts.styles}\n${parts.content}`;
   for (const token of expect.styles_contain ?? []) {
-    if (!styleHas(parts.styles, token)) errors.push(`styles.xml missing ${token} format`);
+    if (!styleHas(styleBlob, token)) errors.push(`workbook missing ${token} format`);
   }
   return errors;
 }

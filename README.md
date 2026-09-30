@@ -128,7 +128,7 @@ Job cards live in `tasks/*.yaml`. A pass is a row, a joined query, or a JSON API
 
 Calc is the hard slice of [OSWorld](https://github.com/xlang-ai/OSWorld) and of trycua's [OSWorld-Verified](https://huggingface.co/datasets/hud-evals/OSWorld-Verified) set: multi-step spreadsheet edits (SUM, SUMIF, AVERAGEIF, nested IF, MIN/MAX), a second sheet, number formats, and a frozen header. Early OSWorld agents sat near 12% overall and often at 0 on Calc. The lab still uses a scripted solver (no API key). The task and the execution check are the benchmark, not an LLM judge.
 
-On this Linux host the guests are QEMU TCG. Nested KVM does not boot. A 15GB machine fits about eight 1GB guests; the wall script measures available RAM and stops short of OOM:
+On this Linux host the guests are QEMU TCG. Nested KVM does not boot. A 1024MB Calc guest measured about 1.9GB of host RSS, so a 15GB machine holds 7 of them. The wall script uses that ratio and stops the last guest if available memory falls under 700MB:
 
 ```bash
 ./scripts/boot-osworld-wall.sh
