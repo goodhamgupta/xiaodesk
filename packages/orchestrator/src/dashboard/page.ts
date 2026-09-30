@@ -29,27 +29,52 @@ export function dashboardPage(): string {
     .connection.connected { background: #143224; color: #9be7c4; }
     .stage { position: fixed; inset: 0; z-index: 20; background: #000; display: none; flex-direction: column; }
     .stage.open { display: flex; }
-    .stage bar, .stage .bar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.65rem 0.9rem; background: #0c1220; color: #e7ecf5; }
-    .stage .screen { flex: 1; aspect-ratio: auto; min-height: 0; }
+    .stage .bar { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; padding: 0.55rem 0.9rem; background: #0c1220; color: #e7ecf5; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+    .actions input { width: 7.5rem; background: #070b14; color: #e7ecf5; border: 1px solid #31415f; border-radius: 8px; padding: 0.4rem 0.5rem; }
+    #stage-screen { flex: 1 1 auto; width: 100%; min-height: 0; aspect-ratio: auto; display: flex; }
+    #stage-screen > .screen { flex: 1 1 auto; width: 100%; height: 100%; min-height: 0; aspect-ratio: auto; }
+    #stage-note { margin: 0; padding: 0 0.9rem 0.45rem; background: #0c1220; color: #f0d7a4; font-size: 0.8rem; }
+    #stage-note:empty { display: none; padding: 0; }
     button { background: #1b2740; color: #e7ecf5; border: 1px solid #31415f; border-radius: 8px; padding: 0.45rem 0.7rem; cursor: pointer; }
+    button:disabled { opacity: 0.45; cursor: default; }
     .waiting { position: absolute; inset: 0; display: grid; place-items: center; color: #8ea0bd; font-size: 0.9rem; }
+    .recordings { padding: 0 1.5rem 2rem; }
+    .recordings h2 { font-size: 1rem; font-weight: 650; margin: 0 0 0.35rem; }
+    .recordings p { margin: 0 0 0.8rem; color: #93a0b8; font-size: 0.85rem; }
+    .recording { margin: 0 0 1.1rem; }
+    .recording strong { display: block; margin-bottom: 0.35rem; font-size: 0.85rem; }
+    .recording video { width: min(960px, 100%); background: #000; border-radius: 10px; }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>VM screens</h1>
-      <p>Each tile is that guest's framebuffer. Click a screen to move the pointer and type. Double-click the title to open it full size.</p>
+      <p>Each tile is that guest's framebuffer. Click a screen to move the pointer and type. Double-click the title to fill the stage. Record writes an mp4 you can replay below. Snapshot and Restore use QEMU's savevm and loadvm.</p>
     </div>
     <div id="connection" class="connection">Connecting</div>
   </header>
   <section class="stats" id="stats"></section>
   <section class="wall" id="wall"></section>
+  <section class="recordings">
+    <h2>Session recordings</h2>
+    <p id="recording-empty">No recordings yet. Open a VM and press Record.</p>
+    <div id="recording-list"></div>
+  </section>
   <div id="stage" class="stage" role="dialog" aria-modal="true" aria-label="VM screen">
     <div class="bar">
       <strong id="stage-title">VM</strong>
-      <button id="stage-close" type="button">Back to all VMs</button>
+      <div class="actions">
+        <button id="rec-start" type="button">Record</button>
+        <button id="rec-stop" type="button">Stop</button>
+        <input id="snap-name" value="lab1" maxlength="40" aria-label="Snapshot name">
+        <button id="snap-save" type="button">Snapshot</button>
+        <button id="snap-load" type="button">Restore</button>
+        <button id="stage-close" type="button">Back to all VMs</button>
+      </div>
     </div>
+    <p id="stage-note"></p>
     <div id="stage-screen" class="screen"></div>
   </div>
   <script type="module">
@@ -84,8 +109,38 @@ export function dashboardPage(): string {
       return rfb;
     }
 
-    function rescale() {
-      window.dispatchEvent(new Event('resize'));
+    const stageNote = document.getElementById('stage-note');
+    const stageObserver = new ResizeObserver(() => {
+      if (!stageId) return;
+      const tile = tiles.get(stageId);
+      if (tile) tile.rfb.scaleViewport = true;
+    });
+    stageObserver.observe(stageScreen);
+
+    function note(text) {
+      stageNote.textContent = text || '';
+    }
+
+    function fit(tile) {
+      tile.screen.style.width = '100%';
+      tile.screen.style.height = '100%';
+      tile.screen.style.aspectRatio = 'auto';
+      tile.screen.style.flex = '1 1 auto';
+      tile.screen.style.minHeight = '0';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          tile.rfb.scaleViewport = true;
+          tile.screen.querySelector('canvas')?.focus();
+        });
+      });
+    }
+
+    function clearFit(tile) {
+      tile.screen.style.width = '';
+      tile.screen.style.height = '';
+      tile.screen.style.aspectRatio = '';
+      tile.screen.style.flex = '';
+      tile.screen.style.minHeight = '';
     }
 
     function openStage(id) {
@@ -94,11 +149,9 @@ export function dashboardPage(): string {
       stageId = id;
       stage.classList.add('open');
       stageTitle.textContent = tile.name.textContent || id;
+      note('');
       stageScreen.append(tile.screen);
-      requestAnimationFrame(() => {
-        rescale();
-        tile.screen.querySelector('canvas')?.focus();
-      });
+      fit(tile);
     }
 
     function closeStage() {
@@ -106,10 +159,99 @@ export function dashboardPage(): string {
       const tile = tiles.get(stageId);
       stage.classList.remove('open');
       stageId = null;
-      if (tile) tile.article.insertBefore(tile.screen, tile.article.firstChild);
+      if (tile) {
+        clearFit(tile);
+        tile.article.insertBefore(tile.screen, tile.article.firstChild);
+        requestAnimationFrame(() => { tile.rfb.scaleViewport = true; });
+      }
       stageScreen.replaceChildren();
-      requestAnimationFrame(rescale);
     }
+
+    async function post(path, body) {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    document.getElementById('rec-start').addEventListener('click', async () => {
+      if (!stageId) return;
+      note('Recording…');
+      try {
+        const data = await post('/api/vms/' + encodeURIComponent(stageId) + '/record/start');
+        note('Recording ' + (data.file || stageId));
+      } catch (err) {
+        note(err.message);
+      }
+    });
+    document.getElementById('rec-stop').addEventListener('click', async () => {
+      if (!stageId) return;
+      note('Stopping the recording…');
+      try {
+        const data = await post('/api/vms/' + encodeURIComponent(stageId) + '/record/stop');
+        note('Saved ' + (data.file || 'recording'));
+        refreshRecordings();
+      } catch (err) {
+        note(err.message);
+      }
+    });
+    document.getElementById('snap-save').addEventListener('click', async () => {
+      if (!stageId) return;
+      const name = document.getElementById('snap-name').value.trim();
+      note('Saving snapshot ' + name + '… the guest pauses while QEMU writes memory.');
+      try {
+        const data = await post('/api/vms/' + encodeURIComponent(stageId) + '/snapshot', { name });
+        note(data.message || ('Saved ' + name));
+      } catch (err) {
+        note(err.message);
+      }
+    });
+    document.getElementById('snap-load').addEventListener('click', async () => {
+      if (!stageId) return;
+      const name = document.getElementById('snap-name').value.trim();
+      note('Restoring ' + name + '…');
+      try {
+        const data = await post('/api/vms/' + encodeURIComponent(stageId) + '/restore', { name });
+        note(data.message || ('Restored ' + name));
+      } catch (err) {
+        note(err.message);
+      }
+    });
+
+    const recordingList = document.getElementById('recording-list');
+    const recordingEmpty = document.getElementById('recording-empty');
+    let recordingKey = '';
+    async function refreshRecordings() {
+      try {
+        const res = await fetch('/api/recordings');
+        if (!res.ok) return;
+        const items = await res.json();
+        const key = items.map((item) => item.file).join('|');
+        if (key === recordingKey) return;
+        recordingKey = key;
+        recordingEmpty.hidden = items.length > 0;
+        recordingList.replaceChildren(...items.map((item) => {
+          const wrap = document.createElement('div');
+          wrap.className = 'recording';
+          const title = document.createElement('strong');
+          title.textContent = item.guest_id + ' · ' + item.file;
+          const video = document.createElement('video');
+          video.controls = true;
+          video.preload = 'metadata';
+          video.src = '/api/recordings/' + encodeURIComponent(item.file);
+          wrap.append(title, video);
+          return wrap;
+        }));
+      } catch {
+        /* the next poll retries */
+      }
+    }
+    refreshRecordings();
+    setInterval(refreshRecordings, 4000);
 
     document.getElementById('stage-close').addEventListener('click', closeStage);
     window.addEventListener('keydown', (event) => {
@@ -188,10 +330,23 @@ export function dashboardPage(): string {
             if (event.key === 'Enter' && event.target === article) openStage(display.guest_id);
           });
           wall.append(article);
-          const rfb = attach(screen, display);
-          rfb.addEventListener('connect', () => waiting.remove());
-          tile = { article, screen, name, phase, rfb };
+          tile = { article, screen, name, phase, rfb: null, closed: false };
           tiles.set(display.guest_id, tile);
+          const arm = (rfb) => {
+            rfb.addEventListener('connect', () => waiting.remove());
+            rfb.addEventListener('disconnect', () => {
+              if (tile.closed || tile.rfb !== rfb) return;
+              setTimeout(() => {
+                if (tile.closed || tiles.get(display.guest_id) !== tile || tile.rfb !== rfb) return;
+                const next = attach(screen, display);
+                tile.rfb = next;
+                arm(next);
+                if (stageId === display.guest_id) fit(tile);
+              }, 800);
+            });
+          };
+          tile.rfb = attach(screen, display);
+          arm(tile.rfb);
         }
         tile.name.textContent = display.job_name || display.guest_id;
         tile.phase.textContent = display.status || 'live framebuffer';
@@ -199,6 +354,7 @@ export function dashboardPage(): string {
       for (const [id, tile] of tiles) {
         if (seen.has(id)) continue;
         if (stageId === id) closeStage();
+        tile.closed = true;
         tile.rfb.disconnect();
         tile.article.remove();
         tiles.delete(id);

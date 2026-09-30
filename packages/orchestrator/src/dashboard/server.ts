@@ -1,14 +1,28 @@
 import { connect as connectTcp } from 'net';
 import { createServer as createHttpServer, type IncomingMessage, type Server } from 'http';
-import { dirname, join } from 'path';
+import { mkdirSync, readFileSync, readdirSync, statSync } from 'fs';
+import { basename, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import express from 'express';
+import express, { type Response } from 'express';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { Duplex } from 'stream';
 import type { DashboardState, VmDisplay } from '../types.js';
 import { dashboardPage } from './page.js';
+import { listSnapshots, loadVm, saveVm } from '../vm/qmp.js';
+import { startVncRecording, type RecordingHandle } from '../vm/vnc-record.js';
+
+export interface DashboardOptions {
+  recordingsDir?: string;
+  controlFile?: string;
+}
 
 const novncRoot = join(dirname(fileURLToPath(import.meta.url)), '../../vendor/novnc');
+
+function fail(res: Response, error: unknown): void {
+  const status = typeof error === 'object' && error && 'status' in error ? Number((error as { status: number }).status) : 500;
+  const message = error instanceof Error ? error.message : 'request failed';
+  res.status(status || 500).json({ error: message });
+}
 
 interface RegisteredDisplay extends VmDisplay {
   vncPort: number;
@@ -22,11 +36,17 @@ export class DashboardServer {
   private latestState: DashboardState | null = null;
   private displays = new Map<string, RegisteredDisplay>();
 
-  constructor(private port: number = 4200) {
+  private recording: RecordingHandle | null = null;
+
+  constructor(
+    private port: number = 4200,
+    private options: DashboardOptions = {},
+  ) {
     this.setupRoutes();
   }
 
   private setupRoutes(): void {
+    this.app.use(express.json({ limit: '32kb' }));
     this.app.use('/novnc', express.static(novncRoot));
 
     this.app.get('/', (_req, res) => {
@@ -52,6 +72,62 @@ export class DashboardServer {
       } else {
         res.status(503).json({ error: 'No state available' });
       }
+    });
+
+    this.app.get('/api/recordings', (_req, res) => {
+      res.json(this.listRecordings());
+    });
+
+    this.app.get('/api/recordings/:file', (req, res) => {
+      const file = this.recordingPath(req.params.file);
+      if (!file) {
+        res.status(404).json({ error: 'recording not found' });
+        return;
+      }
+      res.sendFile(file);
+    });
+
+    this.app.post('/api/vms/:id/record/start', (req, res) => {
+      this.beginRecording(req.params.id).then(
+        (body) => res.json(body),
+        (error) => fail(res, error),
+      );
+    });
+
+    this.app.post('/api/vms/:id/record/stop', (req, res) => {
+      this.endRecording(req.params.id).then(
+        (body) => res.json(body),
+        (error) => fail(res, error),
+      );
+    });
+
+    this.app.get('/api/vms/:id/snapshots', (req, res) => {
+      this.withControl(req.params.id, (row) => listSnapshots(row.qmp)).then(
+        (body) => res.json(body),
+        (error) => fail(res, error),
+      );
+    });
+
+    this.app.post('/api/vms/:id/snapshot', (req, res) => {
+      const name = String(req.body?.name || '');
+      this.withControl(req.params.id, async (row) => {
+        const message = await saveVm(row.qmp, name);
+        return { name, message };
+      }).then(
+        (body) => res.json(body),
+        (error) => fail(res, error),
+      );
+    });
+
+    this.app.post('/api/vms/:id/restore', (req, res) => {
+      const name = String(req.body?.name || '');
+      this.withControl(req.params.id, async (row) => {
+        const message = await loadVm(row.qmp, name);
+        return { name, message };
+      }).then(
+        (body) => res.json(body),
+        (error) => fail(res, error),
+      );
     });
   }
 
@@ -154,6 +230,92 @@ export class DashboardServer {
     this.wss?.handleUpgrade(req, socket, head, (ws) => {
       this.wss?.emit('connection', ws, req);
     });
+  }
+
+  private recordingsDir(): string {
+    return this.options.recordingsDir || join(dirname(fileURLToPath(import.meta.url)), '../../../../runs/recordings');
+  }
+
+  private listRecordings(): Array<{ file: string; guest_id: string; bytes: number; mtime_ms: number }> {
+    const dir = this.recordingsDir();
+    try {
+      return readdirSync(dir)
+        .filter((file) => file.endsWith('.mp4'))
+        .map((file) => {
+          const info = statSync(join(dir, file));
+          const guest = file.split('__')[0] || file;
+          return { file, guest_id: guest, bytes: info.size, mtime_ms: info.mtimeMs };
+        })
+        .sort((a, b) => b.mtime_ms - a.mtime_ms);
+    } catch {
+      return [];
+    }
+  }
+
+  private recordingPath(file: string): string | null {
+    const base = basename(file);
+    if (!/^[a-z0-9][a-z0-9._-]{0,120}\.mp4$/i.test(base)) return null;
+    const full = join(this.recordingsDir(), base);
+    try {
+      if (!statSync(full).isFile()) return null;
+    } catch {
+      return null;
+    }
+    return full;
+  }
+
+  private guestId(id: string): string {
+    const decoded = decodeURIComponent(id);
+    if (!/^[a-z0-9-]{1,64}$/.test(decoded)) {
+      throw Object.assign(new Error('bad guest id'), { status: 400 });
+    }
+    return decoded;
+  }
+
+  private async beginRecording(id: string): Promise<{ file: string; guest_id: string }> {
+    const guestId = this.guestId(id);
+    const display = this.displays.get(guestId);
+    if (!display) throw Object.assign(new Error('guest display is not registered'), { status: 404 });
+    if (this.recording) throw Object.assign(new Error(`already recording ${this.recording.guestId}`), { status: 409 });
+    const dir = this.recordingsDir();
+    mkdirSync(dir, { recursive: true });
+    const fileName = `${guestId}__${Date.now()}.mp4`;
+    const handle = await startVncRecording({
+      host: '127.0.0.1',
+      port: display.vncPort,
+      file: join(dir, fileName),
+      guestId,
+    });
+    this.recording = handle;
+    return { file: fileName, guest_id: guestId };
+  }
+
+  private async endRecording(id: string): Promise<{ file: string; guest_id: string }> {
+    const guestId = this.guestId(id);
+    const current = this.recording;
+    if (!current || current.guestId !== guestId) {
+      throw Object.assign(new Error('this guest is not recording'), { status: 409 });
+    }
+    this.recording = null;
+    await current.stop();
+    return { file: basename(current.file), guest_id: guestId };
+  }
+
+  private async withControl<T>(id: string, fn: (row: { qmp: string }) => Promise<T>): Promise<T> {
+    const guestId = this.guestId(id);
+    const file = this.options.controlFile;
+    if (!file) throw Object.assign(new Error('snapshot control file is not configured'), { status: 409 });
+    let parsed: Record<string, { qmp?: string }>;
+    try {
+      parsed = JSON.parse(readFileSync(file, 'utf8')) as Record<string, { qmp?: string }>;
+    } catch {
+      throw Object.assign(new Error('this guest was booted without a QMP socket; reboot the wall to arm snapshots'), { status: 409 });
+    }
+    const row = parsed[guestId];
+    if (!row?.qmp) {
+      throw Object.assign(new Error('this guest has no QMP socket; reboot the wall so snapshots are armed'), { status: 409 });
+    }
+    return fn({ qmp: row.qmp });
   }
 
   private bridgeVnc(guestId: string, req: IncomingMessage, socket: Duplex, head: Buffer): void {

@@ -1,0 +1,24 @@
+{
+  "id": "browse-support",
+  "name": "Chrome ticket triage for a mobile crash",
+  "kind": "browser",
+  "pack": "support",
+  "goal": "Open ticket TKT-009 in Chrome. Set in-progress, assign dev-team, keep priority critical, tag bug mobile crash escalated, and reply that the crash was reproduced.",
+  "params": {
+    "ticket_id": "TKT-009",
+    "status": "in-progress",
+    "assignee": "dev-team",
+    "priority": "critical",
+    "tags": "bug, mobile, crash, escalated",
+    "reply": "We reproduced the crash and a fix is in progress."
+  },
+  "grade": {
+    "pack": "support",
+    "ticket_id": "TKT-009",
+    "status": "in-progress",
+    "assignee": "dev-team",
+    "priority": "critical",
+    "tags": ["bug", "mobile", "crash", "escalated"],
+    "reply": "We reproduced the crash and a fix is in progress."
+  }
+}

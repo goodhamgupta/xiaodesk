@@ -46,7 +46,7 @@ flowchart LR
 | `packages/orchestrator` | Queue, RAM admission, fan-out runner, CLI + HTML/SSE dashboard. |
 | `packages/guest-agent` | Mock app-server (`initialize`, `thread/start`, `turn/start`), CDP browser tool, scripted stub agent. |
 | `packages/evals` | DB and HTTP checkers. No LLM judge. |
-| `tasks/` | Job cards and executable evals. `batch-24.yaml` is the browser fan-out. `tasks/osworld/` is the Calc pack. |
+| `tasks/` | Job cards and executable evals. `batch-24.yaml` is the browser fan-out. `tasks/osworld/` mixes LibreOffice Calc and Chrome tasks from OSWorld. |
 | `packages/agents-api` | Local Agents API: self-hosted sessions, signed webhooks, executor WebSocket. |
 | `drivers/lume` | Default guest. `lume` on Apple Silicon (Virtualization.framework). QEMU on Linux (KVM, or TCG when nested KVM cannot boot). |
 | `drivers/process` | Fast path: one Node process per job, stdio JSON-RPC. |
@@ -124,17 +124,19 @@ Job cards live in `tasks/*.yaml`. A pass is a row, a joined query, or a JSON API
 | Portal onboarding | User row for that persona (name, plan, terms timestamp), a session row, a `welcome-guide.pdf` download row. |
 | Ticket triage | Status, tags, assignee, and reply body match the gold values on that `ticket_id`. |
 | Constrained booking | Reservation for that guest matches date, party size, accessibility, and `price_per_hour`. |
-| OSWorld Calc | ODS uploaded by the guest. Formulas, cached values, frozen header, and currency or percent styles must match `tasks/osworld/*.json`. |
+| OSWorld Calc | ODS uploaded by the guest. Formulas, cached values, frozen header, and currency or percent styles must match `tasks/osworld/calc-*.json`. |
+| OSWorld Chrome | The same gold as the onboarding, support, and booking packs, driven in headed Chrome on the guest desktop. |
+| OSWorld workflow | One guest does Chrome (GDPR ticket) and then Calc (invoice). This is the multi-app slice. It boots only when RAM remains after the single-app guests. |
 
-Calc is the hard slice of [OSWorld](https://github.com/xlang-ai/OSWorld) and of trycua's [OSWorld-Verified](https://huggingface.co/datasets/hud-evals/OSWorld-Verified) set: multi-step spreadsheet edits (SUM, SUMIF, AVERAGEIF, nested IF, MIN/MAX), a second sheet, number formats, and a frozen header. Early OSWorld agents sat near 12% overall and often at 0 on Calc. The lab still uses a scripted solver (no API key). The task and the execution check are the benchmark, not an LLM judge.
+[OSWorld](https://github.com/xlang-ai/OSWorld) Ubuntu is 369 tasks: about 73% single-app and 27% multi-app workflows. Chrome and LibreOffice are the two apps this guest image can actually run, and they are the Daily and Office categories (the same split trycua's [OSWorld-Verified](https://huggingface.co/datasets/hud-evals/OSWorld-Verified) set uses). The wall is three Chrome tasks and three Calc tasks, alternating, then `flow-triage` if the host still has room. Calc checks are SUM, SUMIF, nested IF, a second sheet, number formats, and a frozen header. Chrome checks are the fixture rows. The lab still uses a scripted solver (no API key). The task and the execution check are the benchmark, not an LLM judge.
 
-On this Linux host the guests are QEMU TCG. Nested KVM does not boot. A 1024MB Calc guest measured about 1.9GB of host RSS, so a 15GB machine holds 7 of them. The wall script uses that ratio and stops the last guest if available memory falls under 700MB:
+On this Linux host the guests are QEMU TCG. Nested KVM does not boot. A 1024MB Calc guest measured about 1.9GB of host RSS. Chrome guests are given 1280MB. The wall script subtracts that prediction from available memory and stops the last guest if available memory falls under 700MB:
 
 ```bash
 ./scripts/boot-osworld-wall.sh
 ```
 
-Framebuffers show up on the dashboard. Click a screen to type. Double-click the title for one guest full size. `scripts/grade-osworld.ts` scores the ODS files the guests POST to `/api/artifacts/:id`.
+Framebuffers show up on the dashboard. Click a screen to type. Double-click the title and the framebuffer fills the stage. Record writes `runs/recordings/*.mp4` (one guest at a time) and the page replays them. Snapshot and Restore send `savevm` / `loadvm` over the guest's QMP socket (`runs/vm-control.json`), which pauses the guest while QEMU writes memory and the qcow2 overlay. `scripts/grade-osworld.ts` scores ODS artifacts and the Chrome fixture rows.
 
 `booking-008` loads a slot, marks it sold out, submits, gets `slot_unavailable`, backs off, and books the next slot that still satisfies the constraints. The host queue is the other backoff: jobs sit in the queue while admission is closed.
 

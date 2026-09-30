@@ -1,0 +1,18 @@
+{
+  "id": "browse-onboarding",
+  "name": "Free plan signup in Chrome",
+  "kind": "browser",
+  "pack": "onboarding",
+  "goal": "Open the onboarding portal in Chrome. Sign up as Alice Johnson, choose Free, accept the terms, and download the welcome PDF.",
+  "params": {
+    "name": "Alice Johnson",
+    "email": "alice.johnson@example.com",
+    "plan": "free"
+  },
+  "grade": {
+    "pack": "onboarding",
+    "email": "alice.johnson@example.com",
+    "name": "Alice Johnson",
+    "plan": "free"
+  }
+}

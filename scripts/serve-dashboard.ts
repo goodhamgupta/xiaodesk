@@ -36,7 +36,10 @@ const state: DashboardState = {
   memory_usage_mb: 0,
 };
 
-const server = new DashboardServer(port);
+const server = new DashboardServer(port, {
+  recordingsDir: join(repoRoot, 'runs/recordings'),
+  controlFile: join(repoRoot, 'runs/vm-control.json'),
+});
 server.start();
 server.broadcast(state);
 const listed = (process.env.VNC_DISPLAYS || '')

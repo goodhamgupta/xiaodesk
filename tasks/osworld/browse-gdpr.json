@@ -1,0 +1,22 @@
+{
+  "id": "browse-gdpr",
+  "name": "Route a GDPR deletion in Chrome",
+  "kind": "browser",
+  "pack": "support",
+  "goal": "Open ticket TKT-005 in Chrome. Set in-progress, assign security-team, tag account gdpr urgent, and reply that deletion is queued.",
+  "params": {
+    "ticket_id": "TKT-005",
+    "status": "in-progress",
+    "assignee": "security-team",
+    "tags": "account, gdpr, urgent",
+    "reply": "Your deletion request is queued and will complete within 30 days."
+  },
+  "grade": {
+    "pack": "support",
+    "ticket_id": "TKT-005",
+    "status": "in-progress",
+    "assignee": "security-team",
+    "tags": ["account", "gdpr", "urgent"],
+    "reply": "Your deletion request is queued and will complete within 30 days."
+  }
+}

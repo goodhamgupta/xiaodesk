@@ -23,6 +23,8 @@ def log(message: str) -> None:
 
 
 def status(text: str) -> None:
+    if os.environ.get("OSWORLD_HOLD") == "1" and text == "ok":
+        return
     Path("/tmp/osworld-status").write_text(text + "\n")
 
 
@@ -248,7 +250,7 @@ def place_window(doc) -> None:
     except Exception as exc:
         log(f"window resize skipped: {exc}")
     subprocess.call(
-        "xdotool search --onlyvisible --class soffice windowsize 1280 760 windowmove 0 0 windowactivate || true",
+        "xdotool search --onlyvisible --class soffice windowsize 1280 800 windowmove 0 0 windowactivate || true",
         shell=True,
         env={**os.environ, "DISPLAY": ":0"},
     )

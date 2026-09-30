@@ -1,0 +1,24 @@
+{
+  "id": "browse-booking",
+  "name": "Book an accessible party of 40",
+  "kind": "browser",
+  "pack": "booking",
+  "goal": "In Chrome, book an accessible venue on 2024-03-15 for 40 guests at no more than $300 per hour. Guest is Priya Shah.",
+  "params": {
+    "date": "2024-03-15",
+    "party_size": 40,
+    "max_price": 300,
+    "accessibility": true,
+    "guest_name": "Priya Shah",
+    "guest_email": "priya.shah@example.com"
+  },
+  "grade": {
+    "pack": "booking",
+    "guest_email": "priya.shah@example.com",
+    "guest_name": "Priya Shah",
+    "party_size": 40,
+    "date": "2024-03-15",
+    "has_accessibility": 1,
+    "price_per_hour_lte": 300
+  }
+}

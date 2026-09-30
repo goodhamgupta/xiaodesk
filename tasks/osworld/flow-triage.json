@@ -1,0 +1,8 @@
+{
+  "id": "flow-triage",
+  "name": "Triage a ticket then invoice the desk",
+  "kind": "workflow",
+  "browser_task": "browse-gdpr",
+  "calc_task": "calc-invoice",
+  "goal": "OSWorld multi-app slice: Chrome handles the GDPR ticket, then LibreOffice Calc finishes the invoice workbook on the same desktop."
+}
