@@ -45,6 +45,21 @@ xsetroot -solid '#0b1020'
 exec openbox
 EOF
 sudo chmod 755 /etc/workshop-xinitrc
+sudo python3 /dev/stdin <<'PY'
+import pathlib, re
+rc = pathlib.Path("/etc/xdg/openbox/rc.xml")
+text = rc.read_text()
+text = re.sub(
+    r"[ \t]*<mousebind button=\"(?:Up|Down)\" action=\"Click\">\s*"
+    r"<action name=\"GoToDesktop\"><to>(?:previous|next)</to></action>\s*"
+    r"</mousebind>\n",
+    "",
+    text,
+)
+text = text.replace("<number>4</number>", "<number>1</number>", 1)
+text = text.replace("<popupTime>875</popupTime>", "<popupTime>0</popupTime>", 1)
+rc.write_text(text)
+PY
 
 sudo tee /etc/systemd/system/workshop-display.service >/dev/null <<'EOF'
 [Unit]
