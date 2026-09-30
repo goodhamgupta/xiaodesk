@@ -1,0 +1,224 @@
+pack: onboarding
+name: Portal Onboarding Tasks
+description: |
+  Multi-step signup: registration, plan selection, terms, welcome page, welcome PDF.
+  Each job uses a unique persona. Pass if the user row, session, and welcome download exist.
+
+jobs:
+  - id: onboarding-001
+    name: Basic Free Plan Signup
+    description: Complete signup flow with free plan selection
+    goal: |
+      Open the onboarding portal. Sign up as Alice Johnson (alice.johnson@example.com),
+      choose the Free plan, accept the terms, and download the welcome PDF.
+    params:
+      name: Alice Johnson
+      email: alice.johnson@example.com
+      plan: free
+    eval:
+      type: composite
+      checks:
+        - name: user_created
+          type: db_row_matches
+          table: users
+          where: { email: alice.johnson@example.com }
+          expected: { name: Alice Johnson, plan: free, terms_accepted_at: "*" }
+        - name: session_created
+          type: db_query
+          query: SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = ?
+          params: [alice.johnson@example.com]
+          expected_min_rows: 1
+        - name: welcome_downloaded
+          type: db_query
+          query: SELECT wd.id FROM welcome_downloads wd JOIN users u ON u.id = wd.user_id WHERE u.email = ? AND wd.filename = 'welcome-guide.pdf'
+          params: [alice.johnson@example.com]
+          expected_min_rows: 1
+
+  - id: onboarding-002
+    name: Pro Plan Signup
+    description: Complete signup flow with Pro plan selection
+    goal: Sign up as Bob Martinez (bob.martinez@example.com) on the Pro plan, accept terms, and download the welcome PDF.
+    params:
+      name: Bob Martinez
+      email: bob.martinez@example.com
+      plan: pro
+    eval:
+      type: composite
+      checks:
+        - name: user_created
+          type: db_row_matches
+          table: users
+          where: { email: bob.martinez@example.com }
+          expected: { name: Bob Martinez, plan: pro, terms_accepted_at: "*" }
+        - name: session_created
+          type: db_query
+          query: SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = ?
+          params: [bob.martinez@example.com]
+          expected_min_rows: 1
+        - name: welcome_downloaded
+          type: db_query
+          query: SELECT wd.id FROM welcome_downloads wd JOIN users u ON u.id = wd.user_id WHERE u.email = ? AND wd.filename = 'welcome-guide.pdf'
+          params: [bob.martinez@example.com]
+          expected_min_rows: 1
+
+  - id: onboarding-003
+    name: Enterprise Plan Signup
+    description: Complete signup flow with Enterprise plan selection
+    goal: Sign up as Carol Chen (carol.chen@example.com) on the Enterprise plan, accept terms, and download the welcome PDF.
+    params:
+      name: Carol Chen
+      email: carol.chen@example.com
+      plan: enterprise
+    eval:
+      type: composite
+      checks:
+        - name: user_created
+          type: db_row_matches
+          table: users
+          where: { email: carol.chen@example.com }
+          expected: { name: Carol Chen, plan: enterprise, terms_accepted_at: "*" }
+        - name: session_created
+          type: db_query
+          query: SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = ?
+          params: [carol.chen@example.com]
+          expected_min_rows: 1
+        - name: welcome_downloaded
+          type: db_query
+          query: SELECT wd.id FROM welcome_downloads wd JOIN users u ON u.id = wd.user_id WHERE u.email = ? AND wd.filename = 'welcome-guide.pdf'
+          params: [carol.chen@example.com]
+          expected_min_rows: 1
+
+  - id: onboarding-004
+    name: Signup with Special Characters
+    description: Test signup with a name containing an accent
+    goal: Sign up as José García (jose.garcia@example.com) on the Free plan, accept terms, and download the welcome PDF.
+    params:
+      name: José García
+      email: jose.garcia@example.com
+      plan: free
+    eval:
+      type: composite
+      checks:
+        - name: user_created
+          type: db_row_matches
+          table: users
+          where: { email: jose.garcia@example.com }
+          expected: { name: José García, plan: free, terms_accepted_at: "*" }
+        - name: session_created
+          type: db_query
+          query: SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = ?
+          params: [jose.garcia@example.com]
+          expected_min_rows: 1
+        - name: welcome_downloaded
+          type: db_query
+          query: SELECT wd.id FROM welcome_downloads wd JOIN users u ON u.id = wd.user_id WHERE u.email = ? AND wd.filename = 'welcome-guide.pdf'
+          params: [jose.garcia@example.com]
+          expected_min_rows: 1
+
+  - id: onboarding-005
+    name: Quick Free Signup
+    description: Fast path through free plan signup
+    goal: Sign up as Diana Lee (diana.lee@example.com) on the Free plan, accept terms, and download the welcome PDF.
+    params:
+      name: Diana Lee
+      email: diana.lee@example.com
+      plan: free
+    eval:
+      type: composite
+      checks:
+        - name: user_created
+          type: db_row_matches
+          table: users
+          where: { email: diana.lee@example.com }
+          expected: { name: Diana Lee, plan: free, terms_accepted_at: "*" }
+        - name: session_created
+          type: db_query
+          query: SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = ?
+          params: [diana.lee@example.com]
+          expected_min_rows: 1
+        - name: welcome_downloaded
+          type: db_query
+          query: SELECT wd.id FROM welcome_downloads wd JOIN users u ON u.id = wd.user_id WHERE u.email = ? AND wd.filename = 'welcome-guide.pdf'
+          params: [diana.lee@example.com]
+          expected_min_rows: 1
+
+  - id: onboarding-006
+    name: Full Enterprise Onboarding
+    description: Complete enterprise signup with all validations
+    goal: Sign up as Edward Kim (edward.kim@enterprise.com) on the Enterprise plan, accept terms, and download the welcome PDF.
+    params:
+      name: Edward Kim
+      email: edward.kim@enterprise.com
+      plan: enterprise
+    eval:
+      type: composite
+      checks:
+        - name: user_created
+          type: db_row_matches
+          table: users
+          where: { email: edward.kim@enterprise.com }
+          expected: { name: Edward Kim, plan: enterprise, terms_accepted_at: "*" }
+        - name: session_created
+          type: db_query
+          query: SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = ?
+          params: [edward.kim@enterprise.com]
+          expected_min_rows: 1
+        - name: welcome_downloaded
+          type: db_query
+          query: SELECT wd.id FROM welcome_downloads wd JOIN users u ON u.id = wd.user_id WHERE u.email = ? AND wd.filename = 'welcome-guide.pdf'
+          params: [edward.kim@enterprise.com]
+          expected_min_rows: 1
+
+  - id: onboarding-007
+    name: Pro Plan with PDF Download
+    description: Pro signup ensuring the welcome PDF is downloaded
+    goal: Sign up as Fiona Wang (fiona.wang@example.com) on the Pro plan, accept terms, and download the welcome PDF.
+    params:
+      name: Fiona Wang
+      email: fiona.wang@example.com
+      plan: pro
+    eval:
+      type: composite
+      checks:
+        - name: user_created
+          type: db_row_matches
+          table: users
+          where: { email: fiona.wang@example.com }
+          expected: { name: Fiona Wang, plan: pro, terms_accepted_at: "*" }
+        - name: session_created
+          type: db_query
+          query: SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = ?
+          params: [fiona.wang@example.com]
+          expected_min_rows: 1
+        - name: welcome_downloaded
+          type: db_query
+          query: SELECT wd.id FROM welcome_downloads wd JOIN users u ON u.id = wd.user_id WHERE u.email = ? AND wd.filename = 'welcome-guide.pdf'
+          params: [fiona.wang@example.com]
+          expected_min_rows: 1
+
+  - id: onboarding-008
+    name: Terms Verification Signup
+    description: Signup focusing on terms acceptance
+    goal: Sign up as George Brown (george.brown@example.com) on the Free plan, accept terms, and download the welcome PDF.
+    params:
+      name: George Brown
+      email: george.brown@example.com
+      plan: free
+    eval:
+      type: composite
+      checks:
+        - name: user_created
+          type: db_row_matches
+          table: users
+          where: { email: george.brown@example.com }
+          expected: { name: George Brown, plan: free, terms_accepted_at: "*" }
+        - name: session_created
+          type: db_query
+          query: SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = ?
+          params: [george.brown@example.com]
+          expected_min_rows: 1
+        - name: welcome_downloaded
+          type: db_query
+          query: SELECT wd.id FROM welcome_downloads wd JOIN users u ON u.id = wd.user_id WHERE u.email = ? AND wd.filename = 'welcome-guide.pdf'
+          params: [george.brown@example.com]
+          expected_min_rows: 1

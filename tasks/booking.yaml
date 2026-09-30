@@ -1,0 +1,233 @@
+pack: booking
+name: Constrained Booking Tasks
+description: |
+  Search venues under date, party size, max price, and accessibility constraints, then confirm a reservation.
+  booking-008 pre-marks the cheapest accessible slot sold out so the agent must pick another slot (retry / backoff).
+
+jobs:
+  - id: booking-001
+    name: Accessible party of 40
+    description: Book an accessible venue for 40 guests under $300/hr on 2024-03-15
+    goal: |
+      Book a venue on 2024-03-15 for 40 guests, max price $300 per hour, accessibility required.
+      Guest name: Priya Shah, email priya.shah@example.com.
+    params:
+      date: "2024-03-15"
+      party_size: 40
+      max_price: 300
+      accessibility: true
+      guest_name: Priya Shah
+      guest_email: priya.shah@example.com
+    eval:
+      type: composite
+      checks:
+        - name: reservation_exists
+          type: api_response
+          endpoint: /booking/api/reservations?guest_email=priya.shah@example.com
+          expected:
+            count: 1
+            reservations:
+              - guest_email: priya.shah@example.com
+                party_size: 40
+                date: "2024-03-15"
+                confirmed: 1
+                has_accessibility: 1
+                price_per_hour_lte: 300
+
+  - id: booking-002
+    name: Small private dinner
+    description: Book any venue for 12 guests on 2024-03-16, no price cap
+    goal: |
+      Book a venue on 2024-03-16 for 12 guests. No accessibility requirement and no max price.
+      Guest name: Luis Ortega, email luis.ortega@example.com.
+    params:
+      date: "2024-03-16"
+      party_size: 12
+      guest_name: Luis Ortega
+      guest_email: luis.ortega@example.com
+    eval:
+      type: composite
+      checks:
+        - name: reservation_exists
+          type: api_response
+          endpoint: /booking/api/reservations?guest_email=luis.ortega@example.com
+          expected:
+            count: 1
+            reservations:
+              - guest_email: luis.ortega@example.com
+                party_size: 12
+                date: "2024-03-16"
+                confirmed: 1
+
+  - id: booking-003
+    name: Budget accessible meetup
+    description: 20 guests, max $200/hr, accessible, 2024-03-17
+    goal: |
+      Book an accessible venue on 2024-03-17 for 20 guests at no more than $200 per hour.
+      Guest name: Nina Patel, email nina.patel@example.com.
+    params:
+      date: "2024-03-17"
+      party_size: 20
+      max_price: 200
+      accessibility: true
+      guest_name: Nina Patel
+      guest_email: nina.patel@example.com
+    eval:
+      type: composite
+      checks:
+        - name: reservation_constraints
+          type: api_response
+          endpoint: /booking/api/reservations?guest_email=nina.patel@example.com
+          expected:
+            count: 1
+            reservations:
+              - party_size: 20
+                date: "2024-03-17"
+                has_accessibility: 1
+                price_per_hour_lte: 200
+                confirmed: 1
+
+  - id: booking-004
+    name: Large gala
+    description: 80 guests on 2024-03-18, accessible, max $500/hr
+    goal: |
+      Book an accessible venue on 2024-03-18 for 80 guests, max $500 per hour.
+      Guest name: Omar Haddad, email omar.haddad@example.com.
+    params:
+      date: "2024-03-18"
+      party_size: 80
+      max_price: 500
+      accessibility: true
+      guest_name: Omar Haddad
+      guest_email: omar.haddad@example.com
+    eval:
+      type: composite
+      checks:
+        - name: gala_reservation
+          type: api_response
+          endpoint: /booking/api/reservations?guest_email=omar.haddad@example.com
+          expected:
+            count: 1
+            reservations:
+              - party_size: 80
+                date: "2024-03-18"
+                has_accessibility: 1
+                price_per_hour_lte: 500
+                confirmed: 1
+
+  - id: booking-005
+    name: Tight budget no a11y
+    description: 10 guests, max $160/hr, 2024-03-19
+    goal: |
+      Book a venue on 2024-03-19 for 10 guests at no more than $160 per hour.
+      Accessibility is not required.
+      Guest name: Quinn Adler, email quinn.adler@example.com.
+    params:
+      date: "2024-03-19"
+      party_size: 10
+      max_price: 160
+      accessibility: false
+      guest_name: Quinn Adler
+      guest_email: quinn.adler@example.com
+    eval:
+      type: composite
+      checks:
+        - name: budget_reservation
+          type: api_response
+          endpoint: /booking/api/reservations?guest_email=quinn.adler@example.com
+          expected:
+            count: 1
+            reservations:
+              - party_size: 10
+                date: "2024-03-19"
+                price_per_hour_lte: 160
+                confirmed: 1
+
+  - id: booking-006
+    name: Midweek workshop
+    description: 30 guests, accessible, max $250, 2024-03-16
+    goal: |
+      Book an accessible venue on 2024-03-16 for 30 guests, max $250 per hour.
+      Guest name: Riley Cho, email riley.cho@example.com.
+    params:
+      date: "2024-03-16"
+      party_size: 30
+      max_price: 250
+      accessibility: true
+      guest_name: Riley Cho
+      guest_email: riley.cho@example.com
+    eval:
+      type: composite
+      checks:
+        - name: workshop_reservation
+          type: api_response
+          endpoint: /booking/api/reservations?guest_email=riley.cho@example.com
+          expected:
+            count: 1
+            reservations:
+              - party_size: 30
+                date: "2024-03-16"
+                has_accessibility: 1
+                price_per_hour_lte: 250
+                confirmed: 1
+
+  - id: booking-007
+    name: Friday night small
+    description: 8 guests on 2024-03-15 evening-capable venue, max $200
+    goal: |
+      Book a venue on 2024-03-15 for 8 guests, max $200 per hour.
+      Guest name: Sam Okonkwo, email sam.okonkwo@example.com.
+    params:
+      date: "2024-03-15"
+      party_size: 8
+      max_price: 200
+      accessibility: false
+      guest_name: Sam Okonkwo
+      guest_email: sam.okonkwo@example.com
+    eval:
+      type: composite
+      checks:
+        - name: friday_reservation
+          type: api_response
+          endpoint: /booking/api/reservations?guest_email=sam.okonkwo@example.com
+          expected:
+            count: 1
+            reservations:
+              - party_size: 8
+                date: "2024-03-15"
+                price_per_hour_lte: 200
+                confirmed: 1
+
+  - id: booking-008
+    name: Sold-out first slot retry
+    description: |
+      The cheapest accessible slot on 2024-03-18 for a party of 20 is marked unavailable
+      after the search page renders, forcing the agent to back off and pick the next slot.
+    goal: |
+      Book an accessible venue on 2024-03-18 for 20 guests, max $220 per hour.
+      If the first slot you click is sold out, go back and choose another slot that still satisfies the constraints.
+      Guest name: Taylor Nguyen, email taylor.nguyen@example.com.
+    setup:
+      force_slot_race: true
+    params:
+      date: "2024-03-18"
+      party_size: 20
+      max_price: 220
+      accessibility: true
+      guest_name: Taylor Nguyen
+      guest_email: taylor.nguyen@example.com
+      force_slot_race: true
+    eval:
+      type: composite
+      checks:
+        - name: retry_reservation
+          type: api_response
+          endpoint: /booking/api/reservations?guest_email=taylor.nguyen@example.com
+          expected:
+            count: 1
+            reservations:
+              - party_size: 20
+                date: "2024-03-18"
+                has_accessibility: 1
+                price_per_hour_lte: 220
+                confirmed: 1

@@ -1,0 +1,32 @@
+# Sample fan-out batch: 24 jobs across the three packs.
+# References job ids defined in onboarding.yaml, support.yaml, and booking.yaml.
+# run-demo loads those packs and filters to this list (or runs every job if --all).
+
+name: sample-batch-24
+description: Twenty-four concurrent-capable browser-use jobs for admission-control demos.
+
+job_ids:
+  - onboarding-001
+  - onboarding-002
+  - onboarding-003
+  - onboarding-004
+  - onboarding-005
+  - onboarding-006
+  - onboarding-007
+  - onboarding-008
+  - support-001
+  - support-002
+  - support-003
+  - support-004
+  - support-005
+  - support-006
+  - support-007
+  - support-008
+  - booking-001
+  - booking-002
+  - booking-003
+  - booking-004
+  - booking-005
+  - booking-006
+  - booking-007
+  - booking-008

@@ -1,0 +1,11 @@
+node_modules
+dist
+apps/fixtures/data
+*.db
+*.db-shm
+*.db-wal
+runs
+.DS_Store
+playwright-report
+test-results
+*.tsbuildinfo

@@ -1,0 +1,265 @@
+pack: support
+name: Ticket Triage Tasks
+description: |
+  Support desk triage: open a ticket, set status/tags/assignee, and post a reply that matches gold.
+  Pass criteria are deterministic DB checks, not an LLM judge.
+
+jobs:
+  - id: support-001
+    name: Critical crash to dev team
+    description: Escalate a mobile crash, tag it, assign dev-team, reply to the customer
+    goal: |
+      Open ticket TKT-009. Set status to in-progress, assign it to dev-team,
+      keep priority critical, set tags to bug, mobile, crash, escalated,
+      and reply: "We reproduced the crash and a fix is in progress."
+    params:
+      ticket_id: TKT-009
+      status: in-progress
+      assignee: dev-team
+      tags: "bug, mobile, crash, escalated"
+      reply: "We reproduced the crash and a fix is in progress."
+    eval:
+      type: composite
+      checks:
+        - name: ticket_status
+          type: db_row_matches
+          table: tickets
+          where:
+            id: TKT-009
+          expected:
+            status: in-progress
+            assignee: dev-team
+            priority: critical
+            tags: ["bug", "mobile", "crash", "escalated"]
+        - name: customer_reply
+          type: db_row_matches
+          table: ticket_replies
+          where:
+            ticket_id: TKT-009
+          expected:
+            content: "We reproduced the crash and a fix is in progress."
+            is_internal: 0
+
+  - id: support-002
+    name: GDPR deletion to security
+    description: Route account deletion to security-team and mark in-progress
+    goal: |
+      Open ticket TKT-005. Set status to in-progress, assign security-team,
+      tags account, gdpr, urgent, and reply: "Your deletion request is queued and will complete within 30 days."
+    params:
+      ticket_id: TKT-005
+      status: in-progress
+      assignee: security-team
+      tags: "account, gdpr, urgent"
+      reply: "Your deletion request is queued and will complete within 30 days."
+    eval:
+      type: composite
+      checks:
+        - name: ticket_routed
+          type: db_row_matches
+          table: tickets
+          where:
+            id: TKT-005
+          expected:
+            status: in-progress
+            assignee: security-team
+            tags: ["account", "gdpr", "urgent"]
+        - name: reply_present
+          type: db_row_matches
+          table: ticket_replies
+          where:
+            ticket_id: TKT-005
+          expected:
+            content: "Your deletion request is queued and will complete within 30 days."
+
+  - id: support-003
+    name: Billing refund resolved
+    description: Assign duplicate charge to billing and resolve it
+    goal: |
+      Open ticket TKT-010. Set status to resolved, assign billing-team,
+      tags billing, refund, duplicate, and reply: "The duplicate charge has been refunded."
+    params:
+      ticket_id: TKT-010
+      status: resolved
+      assignee: billing-team
+      tags: "billing, refund, duplicate"
+      reply: "The duplicate charge has been refunded."
+    eval:
+      type: composite
+      checks:
+        - name: ticket_resolved
+          type: db_row_matches
+          table: tickets
+          where:
+            id: TKT-010
+          expected:
+            status: resolved
+            assignee: billing-team
+            tags: ["billing", "refund", "duplicate"]
+        - name: refund_reply
+          type: db_row_matches
+          table: ticket_replies
+          where:
+            ticket_id: TKT-010
+          expected:
+            content: "The duplicate charge has been refunded."
+
+  - id: support-004
+    name: Dark mode feature closed
+    description: Close a feature request after logging it
+    goal: |
+      Open ticket TKT-003. Set status to closed, leave assignee unassigned,
+      tags feature-request, ui, logged, and reply: "Logged for the design backlog."
+    params:
+      ticket_id: TKT-003
+      status: closed
+      assignee: ""
+      tags: "feature-request, ui, logged"
+      reply: "Logged for the design backlog."
+    eval:
+      type: composite
+      checks:
+        - name: ticket_closed
+          type: db_row_matches
+          table: tickets
+          where:
+            id: TKT-003
+          expected:
+            status: closed
+            tags: ["feature-request", "ui", "logged"]
+        - name: backlog_reply
+          type: db_row_matches
+          table: ticket_replies
+          where:
+            ticket_id: TKT-003
+          expected:
+            content: "Logged for the design backlog."
+
+  - id: support-005
+    name: Export bug to dev
+    description: Move CSV export bug to dev-team and keep it high
+    goal: |
+      Open ticket TKT-004. Set status to in-progress, assignee dev-team,
+      priority high, tags bug, export, chrome, and reply: "Engineering is investigating the Chrome export click handler."
+    params:
+      ticket_id: TKT-004
+      status: in-progress
+      priority: high
+      assignee: dev-team
+      tags: "bug, export, chrome"
+      reply: "Engineering is investigating the Chrome export click handler."
+    eval:
+      type: composite
+      checks:
+        - name: export_ticket
+          type: db_row_matches
+          table: tickets
+          where:
+            id: TKT-004
+          expected:
+            status: in-progress
+            priority: high
+            assignee: dev-team
+            tags: ["bug", "export", "chrome"]
+        - name: export_reply
+          type: db_row_matches
+          table: ticket_replies
+          where:
+            ticket_id: TKT-004
+          expected:
+            content: "Engineering is investigating the Chrome export click handler."
+
+  - id: support-006
+    name: Password reset to support
+    description: Take the auth email ticket and reply with a workaround
+    goal: |
+      Open ticket TKT-007. Set status to in-progress, assignee support-team,
+      tags auth, email, and reply: "We resent the reset link; please check spam and promotions."
+    params:
+      ticket_id: TKT-007
+      status: in-progress
+      assignee: support-team
+      tags: "auth, email"
+      reply: "We resent the reset link; please check spam and promotions."
+    eval:
+      type: composite
+      checks:
+        - name: auth_ticket
+          type: db_row_matches
+          table: tickets
+          where:
+            id: TKT-007
+          expected:
+            status: in-progress
+            assignee: support-team
+            tags: ["auth", "email"]
+        - name: auth_reply
+          type: db_row_matches
+          table: ticket_replies
+          where:
+            ticket_id: TKT-007
+          expected:
+            content: "We resent the reset link; please check spam and promotions."
+
+  - id: support-007
+    name: Upgrade billing question
+    description: Resolve the Pro upgrade lag with billing
+    goal: |
+      Open ticket TKT-002. Set status to resolved, assignee billing-team,
+      tags billing, upgrade, and reply: "Pro features are now active on your account."
+    params:
+      ticket_id: TKT-002
+      status: resolved
+      assignee: billing-team
+      tags: "billing, upgrade"
+      reply: "Pro features are now active on your account."
+    eval:
+      type: composite
+      checks:
+        - name: upgrade_ticket
+          type: db_row_matches
+          table: tickets
+          where:
+            id: TKT-002
+          expected:
+            status: resolved
+            assignee: billing-team
+            tags: ["billing", "upgrade"]
+        - name: upgrade_reply
+          type: db_row_matches
+          table: ticket_replies
+          where:
+            ticket_id: TKT-002
+          expected:
+            content: "Pro features are now active on your account."
+
+  - id: support-008
+    name: Slack integration note
+    description: Close the Slack question with an internal-visible customer reply
+    goal: |
+      Open ticket TKT-008. Set status to closed, tags feature-request, integration, slack,
+      and reply: "Slack notifications are on the roadmap; no native integration yet."
+    params:
+      ticket_id: TKT-008
+      status: closed
+      assignee: ""
+      tags: "feature-request, integration, slack"
+      reply: "Slack notifications are on the roadmap; no native integration yet."
+    eval:
+      type: composite
+      checks:
+        - name: slack_ticket
+          type: db_row_matches
+          table: tickets
+          where:
+            id: TKT-008
+          expected:
+            status: closed
+            tags: ["feature-request", "integration", "slack"]
+        - name: slack_reply
+          type: db_row_matches
+          table: ticket_replies
+          where:
+            ticket_id: TKT-008
+          expected:
+            content: "Slack notifications are on the roadmap; no native integration yet."
