@@ -65,7 +65,7 @@ export interface EvalCheckResult {
 
 export interface GuestConfig {
   id: string;
-  driver: 'process' | 'docker' | 'microvm';
+  driver: 'process' | 'docker' | 'microvm' | 'lume';
   memory_mb: number;
   browser_mode: 'lightpanda' | 'chromium';
   cdp_port: number;
@@ -78,7 +78,7 @@ export interface OrchestratorConfig {
   total_memory_budget_mb: number;
   reserved_host_memory_mb: number;
   fixtures_url: string;
-  driver: 'process' | 'docker' | 'microvm';
+  driver: 'process' | 'docker' | 'microvm' | 'lume';
   browser_mode: 'lightpanda' | 'chromium';
   default_timeout_ms: number;
 }
@@ -93,6 +93,13 @@ export interface QueueStats {
   timeout: number;
 }
 
+export interface VmDisplay {
+  guest_id: string;
+  job_name?: string;
+  status?: string;
+  vnc_password?: string;
+}
+
 export interface DashboardState {
   config: OrchestratorConfig;
   stats: QueueStats;
@@ -100,6 +107,7 @@ export interface DashboardState {
   recent_results: JobResult[];
   queue_depth: number;
   memory_usage_mb: number;
+  displays?: VmDisplay[];
 }
 
 export interface GuestState {

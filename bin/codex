@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Lab stand-in for `codex exec-server`. Flags match the Agents API self-hosted executor.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ "${1:-}" != "exec-server" ]]; then
+  echo "codex: this lab implements 'exec-server' only" >&2
+  exit 1
+fi
+shift
+exec "${ROOT}/node_modules/.bin/tsx" "${ROOT}/packages/guest-agent/src/exec-server.ts" "$@"

@@ -1,0 +1,20 @@
+{
+  "name": "agents-api",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Local Agents API control plane: self-hosted session lifecycle, signed webhooks, executor WebSocket",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}

@@ -6,17 +6,17 @@ Run this on a laptop. Stub mode. No API key.
 
 ```bash
 ./scripts/bootstrap.sh
-./scripts/run-demo.sh --jobs onboarding-001,support-001,booking-008 --exit
+./scripts/run-demo.sh --driver process --jobs onboarding-001,support-001,booking-008 --exit
 ```
 
-That slice must be all passes. Leave a terminal ready with the full command.
+That slice must be all passes. The VM path is section 5 (`--driver lume` after `./scripts/build-guest-image.sh`). Leave a terminal ready with the full process-driver command; it finishes in about a minute.
 
 ## 1. What this is (5 min)
 
 Say this out loud:
 
 - OpenShell is a sandbox product. This is a workshop about the guest image and the host queue.
-- Production is one microVM per user, with Codex App Server inside it. Today the guest is a process, because we are not building a VMM and this room is not a Mac farm.
+- Production is one microVM per user. The default driver boots that guest with lume (Virtualization.framework) or QEMU. The 24-job room demo uses `--driver process` so a laptop is not asked to run 24 Debian VMs.
 - The browser path is CDP. Lightpanda when the binary exists. Chromium otherwise. Not desktop computer-use.
 
 Open [http://127.0.0.1:4317](http://127.0.0.1:4317) after the demo command has started the fixtures, or start them with `pnpm fixtures`. Click the three apps. Do not spend time on the CSS.
@@ -58,9 +58,15 @@ Show the budget in `packages/orchestrator/src/admission/memory-controller.ts`:
 
 Do not launch 20 Chromium processes to make the point. The unit test `fan-out-runner.test.ts` is the same gate with a fake driver.
 
-## 5. Where the real VM goes (5 min)
+## 5. Where the VM runs (5 min)
 
-`drivers/microvm/driver.ts` throws on purpose. Read `docs/microvm.md`: same `GuestDriver`, libkrun or Virtualization.framework on Apple Silicon, Debian guest, Lightpanda on port 9222 inside the VM, `LIGHTPANDA_DISABLE_TELEMETRY=true`.
+`./scripts/build-guest-image.sh` once, then:
+
+```bash
+./scripts/run-demo.sh --driver lume --jobs onboarding-001 --concurrency 1 --exit
+```
+
+Read `docs/microvm.md` and `docs/agents-api.md`. On a Mac this is `lume` / Virtualization.framework. On Linux it is QEMU. The guest runs `codex exec-server --remote … --environment-id …`. The host deletes the session and stops the VM as two separate steps.
 
 Stop on this sentence: the host queue does not move into the VM. Admission stays on the host, because the host is the thing that runs out of RAM.
 
@@ -69,4 +75,4 @@ Stop on this sentence: the host queue does not move into the VM. Admission stays
 - Fixture data looks stale: `./scripts/reset-fixtures.sh`.
 - Browser missing: `pnpm exec playwright install chromium`.
 - A single pack: `./scripts/run-demo.sh --jobs booking-008 --exit`.
-- Dashboard port busy: `DASHBOARD_PORT=4319 ./scripts/run-demo.sh`.
+- Dashboard port busy: `DASHBOARD_PORT=4320 ./scripts/run-demo.sh`. The Agents API listens on 4319.

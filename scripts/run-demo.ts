@@ -14,6 +14,7 @@ import { EvalRunner } from '../packages/evals/src/index.js';
 import { ProcessGuestDriver, repoRoot } from '../drivers/process/driver.js';
 import { DockerGuestDriver } from '../drivers/docker/driver.js';
 import { MicrovmGuestDriver } from '../drivers/microvm/driver.js';
+import { LumeGuestDriver } from '../drivers/lume/driver.js';
 
 const require = createRequire(import.meta.url);
 const FIXTURES_PORT = Number(process.env.FIXTURES_PORT || 4317);
@@ -99,20 +100,21 @@ function snapshot(queue: WorkQueue, memory: MemoryController, config: ReturnType
 async function main(): Promise<void> {
   const lowRam = hasFlag('--low-ram');
   const concurrency = argValue('--concurrency');
-  const driverName = (argValue('--driver') || 'process') as 'process' | 'docker' | 'microvm';
+  const driverName = (argValue('--driver') || 'lume') as 'process' | 'docker' | 'microvm' | 'lume';
   const browserMode = (argValue('--browser') || 'chromium') as 'chromium' | 'lightpanda';
   const appServerMode = (argValue('--app-server') || 'mock') as 'mock' | 'real';
   const exitWhenDone = hasFlag('--exit');
+  const vm = driverName === 'lume' || driverName === 'microvm';
 
   const config = createDefaultConfig({
     fixtures_url: `http://127.0.0.1:${FIXTURES_PORT}`,
     driver: driverName,
     browser_mode: browserMode,
-    max_concurrent_guests: concurrency ? Number(concurrency) : (lowRam ? 2 : 4),
-    total_memory_budget_mb: lowRam ? 2000 : 24 * 1024,
-    reserved_host_memory_mb: lowRam ? 600 : 6 * 1024,
-    memory_per_guest_mb: 700,
-    default_timeout_ms: 90_000,
+    max_concurrent_guests: concurrency ? Number(concurrency) : (vm ? 1 : (lowRam ? 2 : 4)),
+    total_memory_budget_mb: vm ? (lowRam ? 4096 : 8 * 1024) : (lowRam ? 2000 : 24 * 1024),
+    reserved_host_memory_mb: vm ? (lowRam ? 2048 : 4 * 1024) : (lowRam ? 600 : 6 * 1024),
+    memory_per_guest_mb: vm ? 1536 : 700,
+    default_timeout_ms: vm ? 720_000 : 90_000,
   });
 
   console.log(`driver=${driverName} app-server=${appServerMode} browser=${browserMode}`);
@@ -131,11 +133,23 @@ async function main(): Promise<void> {
 
   const queue = new WorkQueue();
   const memory = new MemoryController(config);
+  const dashboard = hasFlag('--no-dashboard') ? null : new DashboardServer(DASHBOARD_PORT);
+  dashboard?.start();
+  const displayHooks = {
+    onDisplay: (info: { guestId: string; vncPort: number; vncPassword?: string; jobName?: string }) => {
+      dashboard?.registerDisplay(info);
+    },
+    onDisplayEnd: (guestId: string) => {
+      dashboard?.unregisterDisplay(guestId);
+    },
+  };
   const driver = driverName === 'docker'
     ? new DockerGuestDriver()
     : driverName === 'microvm'
-      ? new MicrovmGuestDriver()
-      : new ProcessGuestDriver({ appServerMode, browserMode });
+      ? new MicrovmGuestDriver({ browserMode, ...displayHooks })
+      : driverName === 'lume'
+        ? new LumeGuestDriver({ browserMode, ...displayHooks })
+        : new ProcessGuestDriver({ appServerMode, browserMode });
   const evals = new EvalRunner({
     fixturesUrl: config.fixtures_url,
     dbPath: join(repoRoot, 'apps/fixtures/data/fixtures.db'),
@@ -143,9 +157,6 @@ async function main(): Promise<void> {
   const runner = new FanOutRunner(queue, memory, config, driver, {
     evaluate: (job) => evals.evaluate(job),
   });
-
-  const dashboard = hasFlag('--no-dashboard') ? null : new DashboardServer(DASHBOARD_PORT);
-  dashboard?.start();
 
   let lastBackpressure = '';
   runner.on('backpressure', (decision: { reason?: string }) => {
@@ -166,7 +177,7 @@ async function main(): Promise<void> {
 
   queue.enqueueBatch(jobs);
   runner.start();
-  await runner.waitUntilDrained();
+  await runner.waitUntilDrained(vm ? 60 * 60_000 : 15 * 60_000);
   clearInterval(timer);
 
   const state = snapshot(queue, memory, config);

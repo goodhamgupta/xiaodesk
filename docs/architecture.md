@@ -63,6 +63,8 @@ One Express process, three apps, one SQLite database (`apps/fixtures/data/fixtur
 
 `POST /api/reset` wipes and reseeds. Venue ids and slot ids are fixed. Every slot starts available, so evals do not depend on `Math.random`.
 
-## Why process guests in this repo
+## Where the guest runs
 
-A microVM is the production boundary (one per user). Linux CI and this workspace have no Mac hypervisor. The process driver is the same control loop: admit, stdio RPC, CDP, eval, kill. Docker and microVM drivers are the swap points (`drivers/docker`, `drivers/microvm`).
+A microVM is the production boundary (one per user). The default driver boots one Debian guest per job and connects it with the Agents API lifecycle in [docs/agents-api.md](agents-api.md): create a `self_hosted` session, wait for `environment_connection`, start `codex exec-server` inside the VM, score the turn on the host, delete the session, then stop the VM.
+
+On Apple Silicon that boot is `lume` (Virtualization.framework). On Linux it is QEMU, KVM when a probe reaches SeaBIOS, TCG when nested KVM cannot actually run a guest. `--driver process` is the same queue and the same stub agent with no VM, which is what the 24-job low-RAM demo uses.

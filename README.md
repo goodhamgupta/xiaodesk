@@ -47,9 +47,11 @@ flowchart LR
 | `packages/guest-agent` | Mock app-server (`initialize`, `thread/start`, `turn/start`), CDP browser tool, scripted stub agent. |
 | `packages/evals` | DB and HTTP checkers. No LLM judge. |
 | `tasks/` | OSWorld-style job cards: goal, setup, executable eval. `batch-24.yaml` is the sample fan-out. |
-| `drivers/process` | Default guest: one Node process per job, stdio JSON-RPC. |
+| `packages/agents-api` | Local Agents API: self-hosted sessions, signed webhooks, executor WebSocket. |
+| `drivers/lume` | Default guest. `lume` on Apple Silicon (Virtualization.framework). QEMU on Linux (KVM, or TCG when nested KVM cannot boot). |
+| `drivers/process` | Fast path: one Node process per job, stdio JSON-RPC. |
 | `drivers/docker` | Optional guest image skeleton (Debian, not Alpine). |
-| `drivers/microvm` | Stub. Swap in libkrun or Virtualization.framework on a Mac. |
+| `drivers/microvm` | Alias of the lume/QEMU driver. |
 
 Production pattern: **one microVM per user**, and that VM contains Codex App Server. This fan-out lab runs **one guest per job** so a single machine can drain a queue of short browser tasks. See [docs/microvm.md](docs/microvm.md) and [docs/architecture.md](docs/architecture.md).
 
@@ -80,11 +82,18 @@ The summary prints `peak concurrent guests` and `backpressure events`. Unit test
 
 ## Run the demo
 
-Stub mode is the default. It does not need OpenAI credentials, a Codex binary, or Lightpanda.
+The default driver is `lume`: a real guest VM and a local Agents API control plane. It does not need an OpenAI key. Build the Debian image once, then run a short VM batch (a guest is ~1.5 GB, so the default cap is 1):
 
 ```bash
 ./scripts/bootstrap.sh
-./scripts/run-demo.sh --low-ram --exit
+./scripts/build-guest-image.sh
+./scripts/run-demo.sh --driver lume --jobs onboarding-001,support-001,booking-008 --concurrency 1 --exit
+```
+
+The 24-job fan-out stays on the process driver. That path is the one that fits a small machine:
+
+```bash
+./scripts/run-demo.sh --driver process --low-ram --exit
 ```
 
 What that does:
@@ -92,16 +101,16 @@ What that does:
 1. Starts the fixture server on [http://127.0.0.1:4317](http://127.0.0.1:4317) if it is not already up.
 2. `POST /api/reset` so every run sees the same venues, tickets, and empty users.
 3. Enqueues the 24 job cards in `tasks/batch-24.yaml`.
-4. Admits guests up to the RAM cap. Each guest is a process speaking the app-server JSON-RPC subset. The stub drives Playwright Chromium (or Lightpanda if you point it at a CDP endpoint).
+4. Admits guests up to the RAM cap. `lume` boots a VM, the webhook worker starts `codex exec-server`, and the stub drives Playwright Chromium inside the guest. `--driver process` skips the VM and speaks app-server JSON-RPC to a local Node process.
 5. Scores each job against SQLite and the fixture HTTP API.
-6. Prints pass/fail, queue stats, peak concurrency, and backpressure. The HTML dashboard is [http://127.0.0.1:4318](http://127.0.0.1:4318) (`/events` is SSE, `/` is the live page). Add `--exit` to stop when the queue drains; omit it to leave the dashboard serving.
+6. Prints pass/fail, queue stats, peak concurrency, and backpressure. The HTML dashboard is [http://127.0.0.1:4318](http://127.0.0.1:4318). Each tile is that guest's VGA framebuffer (QEMU or lume VNC, drawn with noVNC), not a log tail. Double-click a tile to open that screen full size; Escape returns to the wall. Add `--exit` to stop when the queue drains; omit it to leave the dashboard serving.
 
 Useful slices:
 
 ```bash
-./scripts/run-demo.sh --jobs onboarding-001,support-001,booking-008 --exit
-./scripts/run-demo.sh --browser lightpanda --exit          # falls back to Chromium unless Lightpanda is actually up
-./scripts/run-demo.sh --app-server real --exit             # spawns `codex app-server` instead of the mock; needs a pinned binary
+./scripts/run-demo.sh --driver process --jobs onboarding-001,support-001,booking-008 --exit
+./scripts/run-demo.sh --driver process --browser lightpanda --exit   # falls back to Chromium unless Lightpanda is actually up
+./scripts/run-demo.sh --driver process --app-server real --exit      # spawns `codex app-server`; needs a pinned binary
 ./scripts/reset-fixtures.sh
 pnpm test
 ```
@@ -122,7 +131,8 @@ Job cards live in `tasks/*.yaml`. A pass is a row, a joined query, or a JSON API
 
 - [docs/codex-app-server.md](docs/codex-app-server.md) — pin `codex app-server`, the JSON-RPC messages the mock implements, `--app-server real`.
 - [docs/lightpanda.md](docs/lightpanda.md) — glibc guest, `LIGHTPANDA_DISABLE_TELEMETRY=true`, CDP on 9222, Chromium fallback.
-- [docs/microvm.md](docs/microvm.md) — process vs docker vs libkrun / Virtualization.framework.
+- [docs/agents-api.md](docs/agents-api.md) — session lifecycle, webhooks, `codex exec-server`.
+- [docs/microvm.md](docs/microvm.md) — lume / Virtualization.framework on a Mac, QEMU on Linux.
 - [docs/demo-script.md](docs/demo-script.md) — 30–45 minute walkthrough.
 - [docs/lab-brief.md](docs/lab-brief.md) — one-page brief.
 
@@ -131,14 +141,15 @@ Job cards live in `tasks/*.yaml`. A pass is a row, a joined query, or a JSON API
 ```
 apps/fixtures/          three portals + SQLite
 packages/orchestrator/  queue, admission, runner, dashboard
-packages/guest-agent/   mock app-server, browser tool, stub agent
+packages/guest-agent/   mock app-server, browser tool, stub agent, exec-server
+packages/agents-api/    local Agents API control plane
 packages/evals/         deterministic checkers
 tasks/                  job cards + batch-24
-drivers/                process (default), docker, microvm stub
+drivers/                lume (default), process, docker, microvm alias
 scripts/                bootstrap, run-demo, reset-fixtures
 docs/                   workshop writeups
 ```
 
 ## Tests
 
-`pnpm test` covers admission math, the fan-out cap under a 2-guest budget, and the DB/API checkers. No Mac, no paid API, no browser download. The demo command is the end-to-end check.
+`pnpm test` covers admission math, the fan-out cap under a 2-guest budget, the DB/API checkers, webhook signatures, and the Agents API lifecycle (connect timeout, delete-does-not-stop, idle-does-not-stop, executor key scope). No Mac and no paid API. `./scripts/build-guest-image.sh` then `./scripts/run-demo.sh --driver lume` is the VM end-to-end check.

@@ -40,11 +40,27 @@ export class PlaywrightBrowserTool implements BrowserTool {
       const contexts = this.browser.contexts();
       this.context = contexts[0] || await this.browser.newContext();
     } else {
+      const headed = this.config.headless === false;
       this.browser = await chromium.launch({
-        headless: this.config.headless ?? true,
-        args: ['--no-sandbox', '--disable-dev-shm-usage'],
+        headless: !headed,
+        args: headed
+          ? [
+              '--no-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu',
+              '--ozone-platform=x11',
+              '--no-first-run',
+              '--no-default-browser-check',
+              '--disable-fre',
+              '--window-size=1280,800',
+              '--window-position=0,0',
+              '--start-maximized',
+            ]
+          : ['--no-sandbox', '--disable-dev-shm-usage'],
       });
-      this.context = await this.browser.newContext();
+      this.context = await this.browser.newContext(
+        headed ? { viewport: { width: 1280, height: 800 } } : {},
+      );
     }
     this.page = await this.context.newPage();
     this.page.setDefaultTimeout(20_000);

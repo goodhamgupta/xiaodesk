@@ -39,5 +39,14 @@ const state: DashboardState = {
 const server = new DashboardServer(port);
 server.start();
 server.broadcast(state);
+const vncPort = Number(process.env.VNC_PORT || 0);
+if (vncPort > 0) {
+  server.registerDisplay({
+    guestId: process.env.VNC_GUEST_ID || 'guest-1',
+    vncPort,
+    jobName: process.env.VNC_JOB_NAME || 'guest desktop',
+    status: 'live framebuffer',
+  });
+}
 setInterval(() => server.broadcast(state), 1000);
-console.log(`replaying last run at http://127.0.0.1:${port} (peak ${summary.peak_concurrent})`);
+console.log(`dashboard at http://127.0.0.1:${port} (peak ${summary.peak_concurrent}, vnc ${vncPort || 'none'})`);

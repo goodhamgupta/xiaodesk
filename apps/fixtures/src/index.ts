@@ -8,7 +8,7 @@ import supportRoutes from './routes/support.js';
 import bookingRoutes from './routes/booking.js';
 
 const app = express();
-const PORT = process.env.FIXTURES_PORT || 4317;
+const PORT = Number(process.env.FIXTURES_PORT || 4317);
 
 app.use(cors());
 app.use(express.json());
@@ -119,7 +119,7 @@ function ensureSeeded() {
 
 ensureSeeded();
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 Fixture apps running at http://localhost:${PORT}`);
   console.log(`   📋 Onboarding: http://localhost:${PORT}/onboarding`);
   console.log(`   🎫 Support:    http://localhost:${PORT}/support`);

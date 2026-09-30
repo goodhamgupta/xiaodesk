@@ -66,3 +66,7 @@ Expect eval failures until the real agent can drive the fixture pages. The RPC s
 - booking: apply the constraint filters, take the cheapest enabled venue, confirm a slot. With `force_slot_race`, mark that slot sold out after render and retry
 
 Swap the stub for a model by replacing the body of `turn/start` in the worker, or by using `--app-server real`. Keep the evals. They do not care who clicked.
+
+## VM path: `codex exec-server`
+
+`--driver lume` does not speak this stdio protocol to the guest. It creates a self-hosted Agents API session and runs `bin/codex exec-server --remote <remote_url> --environment-id <ccarenv_…>` inside the VM. The lab harness then sends one `run_job` command, which calls the same stub. See [agents-api.md](agents-api.md). `--driver process --app-server real` is still the stdio `codex app-server` path.
