@@ -57,7 +57,7 @@ boot_one() {
     rm -f "${overlay}"
     qemu-img create -f qcow2 -b "${BASE}" -F qcow2 "${overlay}" >/dev/null
     echo "booting ${name} vnc=${vnc_port} ssh=${ssh_port} mem=${MEM_MB}"
-    qemu-system-x86_64 \
+    setsid qemu-system-x86_64 \
       "${QEMU_ARGS[@]}" \
       -m "${MEM_MB}" -smp 1 \
       -vga std -device virtio-tablet-pci \
@@ -66,11 +66,12 @@ boot_one() {
       -drive "file=${overlay},if=virtio,format=qcow2,cache=writethrough" \
       -nic "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:${ssh_port}-:22" \
       -serial "file:${IMG}/${name}-serial.log" \
-      > "${IMG}/${name}-qemu.log" 2>&1 &
+      > "${IMG}/${name}-qemu.log" 2>&1 < /dev/null &
     echo $! > "${pidfile}"
+    disown "$!" 2>/dev/null || true
   fi
   local title
-  title="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "${ROOT}/tasks/osworld/${name}.json")"
+  title="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"].replace(",", ""))' "${ROOT}/tasks/osworld/${name}.json")"
   DISPLAYS+=("${name}@${vnc_port}@${title}")
 }
 
