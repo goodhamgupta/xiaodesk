@@ -39,7 +39,7 @@ const DISCONNECT_TIMEOUT = 3;
 const DEFAULT_BACKGROUND = 'rgb(40, 40, 40)';
 
 // Minimum wait (ms) between two mouse moves
-const MOUSE_MOVE_DELAY = 17;
+const MOUSE_MOVE_DELAY = 4;
 
 // Wheel thresholds
 const WHEEL_STEP = 50; // Pixels needed for one step
@@ -1753,12 +1753,12 @@ export default class RFB extends EventTargetMixin {
 
         // In preference order
         encs.push(encodings.encodingCopyRect);
-        // Only supported with full depth support
+        // Hextile before Tight: Tight's zlib stalls the pointer on a busy TCG host.
         if (this._fbDepth == 24) {
-            encs.push(encodings.encodingTight);
-            encs.push(encodings.encodingTightPNG);
             encs.push(encodings.encodingHextile);
             encs.push(encodings.encodingRRE);
+            encs.push(encodings.encodingTight);
+            encs.push(encodings.encodingTightPNG);
         }
         encs.push(encodings.encodingRaw);
 

@@ -19,7 +19,7 @@ export function dashboardPage(): string {
     .tile { background: #0c1220; border: 1px solid #243049; border-radius: 14px; overflow: hidden; outline: none; }
     .tile:focus-visible { border-color: #7aa2ff; }
     .screen { position: relative; aspect-ratio: 16 / 10; background: #000; overflow: hidden; }
-    .screen canvas { display: block; }
+    .screen canvas { display: block; cursor: default !important; }
     .meta { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; padding: 0.7rem 0.85rem; cursor: zoom-in; }
     .meta strong { display: block; }
     .phase { color: #9eb0cc; font-size: 0.8rem; }
@@ -75,6 +75,8 @@ export function dashboardPage(): string {
       rfb.viewOnly = false;
       rfb.focusOnClick = true;
       rfb.scaleViewport = true;
+      rfb.compressionLevel = 0;
+      rfb.qualityLevel = 9;
       rfb.background = '#000000';
       rfb.addEventListener('credentialsrequired', () => {
         rfb.sendCredentials({ password: display.vnc_password || '' });
@@ -216,7 +218,7 @@ export function dashboardPage(): string {
     function connect() {
       const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/');
       ws.onopen = () => { connEl.textContent = 'Live'; connEl.className = 'connection connected'; };
-      ws.onclose = () => { connEl.textContent = 'Reconnecting'; connEl.className = 'connection'; setTimeout(connect, 1500); };
+      ws.onclose = () => { connEl.textContent = 'Reconnecting'; connEl.className = 'connection'; setTimeout(() => location.reload(), 600); };
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data);
         if (message.type === 'state') apply(message.data);

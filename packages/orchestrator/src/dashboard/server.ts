@@ -57,7 +57,7 @@ export class DashboardServer {
 
   start(): void {
     this.server = createHttpServer(this.app);
-    this.wss = new WebSocketServer({ noServer: true });
+    this.wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
     this.server.on('upgrade', (req, socket, head) => {
       this.routeUpgrade(req, socket, head);
     });
@@ -163,7 +163,8 @@ export class DashboardServer {
       socket.destroy();
       return;
     }
-    const tcp = connectTcp(display.vncPort, '127.0.0.1');
+    const tcp = connectTcp({ port: display.vncPort, host: '127.0.0.1' });
+    tcp.setNoDelay(true);
     const fail = () => {
       tcp.destroy();
       socket.destroy();
@@ -171,7 +172,7 @@ export class DashboardServer {
     tcp.once('error', fail);
     tcp.once('connect', () => {
       tcp.removeListener('error', fail);
-      const bridge = new WebSocketServer({ noServer: true });
+      const bridge = new WebSocketServer({ noServer: true, perMessageDeflate: false });
       bridge.handleUpgrade(req, socket, head, (ws) => {
         const writeTcp = (data: RawData) => {
           if (Array.isArray(data)) tcp.write(Buffer.concat(data));
