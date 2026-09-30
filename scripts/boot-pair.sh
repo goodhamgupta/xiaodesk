@@ -92,6 +92,25 @@ if [[ "${ok}" != 1 ]]; then
   sudo journalctl -u workshop-display --no-pager -n 30 >&2 || true
   exit 1
 fi
+python3 - <<'PY' >/tmp/hide-cursor.log 2>&1 &
+import ctypes, time
+x11 = ctypes.CDLL("libX11.so.6")
+xf = ctypes.CDLL("libXfixes.so.3")
+x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+x11.XOpenDisplay.restype = ctypes.c_void_p
+x11.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+x11.XDefaultRootWindow.restype = ctypes.c_ulong
+x11.XFlush.argtypes = [ctypes.c_void_p]
+xf.XFixesQueryExtension.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+xf.XFixesHideCursor.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+d = x11.XOpenDisplay(None)
+ev, err = ctypes.c_int(), ctypes.c_int()
+xf.XFixesQueryExtension(d, ctypes.byref(ev), ctypes.byref(err))
+xf.XFixesHideCursor(d, x11.XDefaultRootWindow(d))
+x11.XFlush(d)
+while True:
+    time.sleep(3600)
+PY
 mkdir -p /tmp/screen
 cat > /tmp/screen/index.html <<HTML
 <!doctype html>
