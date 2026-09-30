@@ -270,6 +270,10 @@ for index in "${!CHOSEN[@]}"; do
   fi
   if wait_ssh "${name}" "$((24841 + index))"; then
     alive+=("${index}:${name}:${KINDS[$index]}")
+    # Chrome guests fight each other for TCG time if they all launch together.
+    if [[ "${KINDS[$index]}" == "browser" || "${KINDS[$index]}" == "workflow" ]]; then
+      sleep 20
+    fi
     start_solver "${index}" "${name}" "${KINDS[$index]}"
   fi
 done

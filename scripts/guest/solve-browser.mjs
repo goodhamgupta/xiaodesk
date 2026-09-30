@@ -3,7 +3,7 @@
 // framebuffer shows the clicks. Node 22 has fetch and WebSocket; the guest
 // image does not ship the Playwright npm package.
 import { spawn, execFile } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const task = JSON.parse(readFileSync(process.argv[2], 'utf8'));
@@ -78,7 +78,8 @@ class Cdp {
 
 async function connectCdp() {
   let wsUrl = '';
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  let lastError = 'no response';
+  for (let attempt = 0; attempt < 90; attempt += 1) {
     try {
       const list = await fetch('http://127.0.0.1:9222/json/list').then((res) => res.json());
       const page = list.find((entry) => entry.type === 'page' && entry.webSocketDebuggerUrl);
@@ -86,12 +87,13 @@ async function connectCdp() {
         wsUrl = page.webSocketDebuggerUrl;
         break;
       }
-    } catch {
-      /* chrome is still binding the port */
+      lastError = `targets=${list.length}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
     }
-    await sleep(200);
+    await sleep(500);
   }
-  if (!wsUrl) throw new Error('Chrome DevTools did not publish a page');
+  if (!wsUrl) throw new Error(`Chrome DevTools did not publish a page (${lastError})`);
   const ws = new WebSocket(wsUrl);
   await new Promise((resolve, reject) => {
     ws.addEventListener('open', resolve);
@@ -245,6 +247,7 @@ async function main() {
   rmSync('/tmp/chrome-profile', { recursive: true, force: true });
   const bin = chromeBin();
   log(`chrome ${bin}`);
+  const chromeLog = openSync('/tmp/chrome.log', 'w');
   const chrome = spawn(bin, [
     '--no-sandbox',
     '--disable-dev-shm-usage',
@@ -263,7 +266,7 @@ async function main() {
   ], {
     env: { ...process.env, DISPLAY: ':0', HOME: process.env.HOME || '/home/lume' },
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', chromeLog, chromeLog],
   });
   chrome.unref();
   writeFileSync('/tmp/chrome.pid', `${chrome.pid}\n`);
