@@ -24,6 +24,7 @@ images/accel-probe.log
 images/preview-serial.log
 images/preview-qemu.log
 images/preview-qemu.pid
+images/*.pid
 images/guest-screen.png
 .DS_Store
 playwright-report

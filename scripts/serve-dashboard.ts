@@ -39,14 +39,32 @@ const state: DashboardState = {
 const server = new DashboardServer(port);
 server.start();
 server.broadcast(state);
-const vncPort = Number(process.env.VNC_PORT || 0);
-if (vncPort > 0) {
-  server.registerDisplay({
-    guestId: process.env.VNC_GUEST_ID || 'guest-1',
-    vncPort,
-    jobName: process.env.VNC_JOB_NAME || 'guest desktop',
-    status: 'live framebuffer',
-  });
+const listed = (process.env.VNC_DISPLAYS || '')
+  .split(',')
+  .map((item) => item.trim())
+  .filter(Boolean);
+if (listed.length > 0) {
+  for (const item of listed) {
+    const [guestId, portText, ...nameParts] = item.split('@');
+    const vncPort = Number(portText);
+    if (!guestId || !Number.isFinite(vncPort)) continue;
+    server.registerDisplay({
+      guestId,
+      vncPort,
+      jobName: nameParts.join('@') || guestId,
+      status: 'live framebuffer',
+    });
+  }
+} else {
+  const vncPort = Number(process.env.VNC_PORT || 0);
+  if (vncPort > 0) {
+    server.registerDisplay({
+      guestId: process.env.VNC_GUEST_ID || 'guest-1',
+      vncPort,
+      jobName: process.env.VNC_JOB_NAME || 'guest desktop',
+      status: 'live framebuffer',
+    });
+  }
 }
 setInterval(() => server.broadcast(state), 1000);
-console.log(`dashboard at http://127.0.0.1:${port} (peak ${summary.peak_concurrent}, vnc ${vncPort || 'none'})`);
+console.log(`dashboard at http://127.0.0.1:${port} displays=${process.env.VNC_DISPLAYS || process.env.VNC_PORT || 'none'}`);

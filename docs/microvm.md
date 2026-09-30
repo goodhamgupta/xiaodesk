@@ -44,7 +44,7 @@ This lab does not link Virtualization.framework itself. `lume` is that integrati
 
 Each job gets a qcow2 overlay of that image. `FIXTURES_URL` inside the guest is `http://10.0.2.2:4317`. The executor dials `ws://10.0.2.2:4319/v1/agents/api`.
 
-The guest framebuffer is the dashboard. QEMU serves the VGA device on VNC (`share=force-shared`, no local window). On a Mac, `lume run --display none --vnc-port <port>` keeps Virtualization.framework's VNC server up. The dashboard proxies that socket to the browser and draws it with noVNC. Double-click a tile to open that VM's screen full size. `./scripts/enable-guest-display.sh` installs an X session on the VGA device and the stub browser runs headed on `DISPLAY=:0`, so the screen share shows the pages being driven, not a serial log.
+The guest framebuffer is the dashboard. QEMU serves the VGA device on VNC (`share=force-shared`, no local window) and a `virtio-tablet-pci` so the pointer is absolute. On a Mac, `lume run --display none --vnc-port <port>` keeps Virtualization.framework's VNC server up. The dashboard proxies that socket to the browser and draws it with noVNC. Click the picture to move the guest pointer and type; double-click the tile title to open that screen full size. Keys go to whichever canvas is focused, so two guests do not share one keyboard. `./scripts/enable-guest-display.sh` installs an X session on the VGA device and the stub browser runs headed on `DISPLAY=:0`.
 
 ## What stays on the host
 

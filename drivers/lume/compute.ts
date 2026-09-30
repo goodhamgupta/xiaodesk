@@ -37,6 +37,7 @@ export function buildQemuArgs(input: {
     '-m', String(input.memoryMb),
     '-smp', '2',
     '-vga', 'std',
+    '-device', 'virtio-tablet-pci',
     '-display', 'none',
     '-vnc', `127.0.0.1:${vncDisplay},share=force-shared`,
     '-monitor', 'none',

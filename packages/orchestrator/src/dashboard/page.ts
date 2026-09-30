@@ -16,12 +16,11 @@ export function dashboardPage(): string {
     .stat b { display: block; font-size: 1.15rem; }
     .stat span { color: #8ea0bd; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; }
     .wall { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 1rem; padding: 1rem 1.5rem 2rem; }
-    .tile { background: #0c1220; border: 1px solid #243049; border-radius: 14px; overflow: hidden; cursor: zoom-in; outline: none; }
+    .tile { background: #0c1220; border: 1px solid #243049; border-radius: 14px; overflow: hidden; outline: none; }
     .tile:focus-visible { border-color: #7aa2ff; }
     .screen { position: relative; aspect-ratio: 16 / 10; background: #000; overflow: hidden; }
     .screen canvas { display: block; }
-    .hit { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
-    .meta { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; padding: 0.7rem 0.85rem; }
+    .meta { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; padding: 0.7rem 0.85rem; cursor: zoom-in; }
     .meta strong { display: block; }
     .phase { color: #9eb0cc; font-size: 0.8rem; }
     .hint { color: #7f8da8; font-size: 0.75rem; }
@@ -40,7 +39,7 @@ export function dashboardPage(): string {
   <header>
     <div>
       <h1>VM screens</h1>
-      <p>Each tile is that guest's framebuffer, the same pixels a screen share would send. Double-click a VM to open it full size.</p>
+      <p>Each tile is that guest's framebuffer. Click a screen to move the pointer and type. Double-click the title to open it full size.</p>
     </div>
     <div id="connection" class="connection">Connecting</div>
   </header>
@@ -73,7 +72,8 @@ export function dashboardPage(): string {
 
     function attach(el, display) {
       const rfb = new RFB(el, socketUrl(display.guest_id), { shared: true });
-      rfb.viewOnly = true;
+      rfb.viewOnly = false;
+      rfb.focusOnClick = true;
       rfb.scaleViewport = true;
       rfb.background = '#000000';
       rfb.addEventListener('credentialsrequired', () => {
@@ -93,7 +93,10 @@ export function dashboardPage(): string {
       stage.classList.add('open');
       stageTitle.textContent = tile.name.textContent || id;
       stageScreen.append(tile.screen);
-      requestAnimationFrame(rescale);
+      requestAnimationFrame(() => {
+        rescale();
+        tile.screen.querySelector('canvas')?.focus();
+      });
     }
 
     function closeStage() {
@@ -108,7 +111,9 @@ export function dashboardPage(): string {
 
     document.getElementById('stage-close').addEventListener('click', closeStage);
     window.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closeStage();
+      if (event.key !== 'Escape' || !stageId) return;
+      if (event.target instanceof Element && event.target.closest('.screen')) return;
+      closeStage();
     });
 
     function renderStats(state) {
@@ -160,16 +165,6 @@ export function dashboardPage(): string {
           waiting.className = 'waiting';
           waiting.textContent = 'Connecting to the VM display…';
           screen.append(waiting);
-          const hit = document.createElement('button');
-          hit.type = 'button';
-          hit.className = 'hit';
-          hit.setAttribute('aria-label', 'Open ' + (display.job_name || display.guest_id));
-          hit.addEventListener('dblclick', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            openStage(display.guest_id);
-          });
-          screen.append(hit);
           const meta = document.createElement('div');
           meta.className = 'meta';
           const titles = document.createElement('div');
@@ -179,12 +174,16 @@ export function dashboardPage(): string {
           titles.append(name, phase);
           const hint = document.createElement('div');
           hint.className = 'hint';
-          hint.textContent = 'Double-click to open';
+          hint.textContent = 'Double-click title to open';
           meta.append(titles, hint);
+          meta.addEventListener('dblclick', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openStage(display.guest_id);
+          });
           article.append(screen, meta);
-          article.addEventListener('dblclick', () => openStage(display.guest_id), true);
           article.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') openStage(display.guest_id);
+            if (event.key === 'Enter' && event.target === article) openStage(display.guest_id);
           });
           wall.append(article);
           const rfb = attach(screen, display);

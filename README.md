@@ -103,7 +103,7 @@ What that does:
 3. Enqueues the 24 job cards in `tasks/batch-24.yaml`.
 4. Admits guests up to the RAM cap. `lume` boots a VM, the webhook worker starts `codex exec-server`, and the stub drives Playwright Chromium inside the guest. `--driver process` skips the VM and speaks app-server JSON-RPC to a local Node process.
 5. Scores each job against SQLite and the fixture HTTP API.
-6. Prints pass/fail, queue stats, peak concurrency, and backpressure. The HTML dashboard is [http://127.0.0.1:4318](http://127.0.0.1:4318). Each tile is that guest's VGA framebuffer (QEMU or lume VNC, drawn with noVNC), not a log tail. Double-click a tile to open that screen full size; Escape returns to the wall. Add `--exit` to stop when the queue drains; omit it to leave the dashboard serving.
+6. Prints pass/fail, queue stats, peak concurrency, and backpressure. The HTML dashboard is [http://127.0.0.1:4318](http://127.0.0.1:4318). Each tile is that guest's VGA framebuffer (QEMU or lume VNC, drawn with noVNC). Click the picture to move the pointer and type. Double-click the title to open that screen full size. Add `--exit` to stop when the queue drains; omit it to leave the dashboard serving.
 
 Useful slices:
 

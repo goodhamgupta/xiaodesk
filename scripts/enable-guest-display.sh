@@ -29,7 +29,7 @@ echo "booting guest to install the VGA desktop (vnc ${VNC_PORT})"
 qemu-system-x86_64 \
   "${QEMU_ARGS[@]}" \
   -m 1536 -smp 2 \
-  -vga std -display none -vnc "127.0.0.1:${VNC_DISPLAY},share=force-shared" \
+  -vga std -device virtio-tablet-pci -display none -vnc "127.0.0.1:${VNC_DISPLAY},share=force-shared" \
   -monitor none -no-reboot \
   -drive "file=${GUEST},if=virtio,format=qcow2,cache=writethrough" \
   -nic "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22" \

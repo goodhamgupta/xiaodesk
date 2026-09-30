@@ -15,6 +15,7 @@ describe('microvm command lines', () => {
     expect(args.join(' ')).toContain('hostfwd=tcp:127.0.0.1:25111-:22');
     expect(args.join(' ')).toContain('127.0.0.1:11,share=force-shared');
     expect(args).not.toContain('-nographic');
+    expect(args).toContain('virtio-tablet-pci');
     const tcg = buildQemuArgs({
       accel: 'tcg',
       memoryMb: 1536,
