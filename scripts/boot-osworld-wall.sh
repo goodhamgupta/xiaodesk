@@ -8,7 +8,7 @@ BASE="${IMG}/guest-base.qcow2"
 KEY="${IMG}/guest_ed25519"
 OVERLAYS="${ROOT}/runs/overlays"
 QMP_DIR="${ROOT}/runs/qmp"
-mkdir -p "${OVERLAYS}" "${ROOT}/runs/artifacts" "${QMP_DIR}" "${ROOT}/runs/recordings"
+mkdir -p "${OVERLAYS}" "${ROOT}/runs/artifacts" "${QMP_DIR}" "${ROOT}/runs/recordings" "${ROOT}/runs/osworld-rpc"
 
 if [[ ! -f "${BASE}" || ! -f "${IMG}/guest-base.ready" ]]; then
   echo "build the guest image first: ./scripts/build-guest-image.sh" >&2
@@ -216,19 +216,18 @@ start_solver() {
   local index="$1" name="$2" kind="$3"
   local ssh_port=$((24841 + index))
   local task_json="/tmp/${name}.task.json"
+  local rpc_dir="${ROOT}/runs/osworld-rpc"
+  mkdir -p "${rpc_dir}"
+  scp_to "${ssh_port}" "${ROOT}/scripts/guest/app-server.mjs" "/tmp/app-server.mjs"
   if [[ "${kind}" == "browser" ]]; then
     stamp_task "${ROOT}/tasks/osworld/${name}.json" "${task_json}"
     scp_to "${ssh_port}" "${ROOT}/scripts/guest/solve-browser.mjs" "/tmp/solve-browser.mjs"
     scp_to "${ssh_port}" "${task_json}" "/tmp/task.json"
-    ssh -i "${KEY}" -p "${ssh_port}" \
-      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes \
-      -o BatchMode=yes -f \
-      lume@127.0.0.1 \
-      "bash -lc 'node /tmp/solve-browser.mjs /tmp/task.json > /tmp/osworld.log 2>&1'"
   elif [[ "${kind}" == "workflow" ]]; then
     local browser calc
     browser="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["browser_task"])' "${ROOT}/tasks/osworld/${name}.json")"
     calc="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["calc_task"])' "${ROOT}/tasks/osworld/${name}.json")"
+    stamp_task "${ROOT}/tasks/osworld/${name}.json" "${task_json}"
     stamp_task "${ROOT}/tasks/osworld/${browser}.json" "/tmp/${browser}.task.json"
     stamp_task "${ROOT}/tasks/osworld/${calc}.json" "/tmp/${calc}.task.json"
     scp_to "${ssh_port}" "${ROOT}/scripts/guest/solve-browser.mjs" "/tmp/solve-browser.mjs"
@@ -236,22 +235,20 @@ start_solver() {
     scp_to "${ssh_port}" "${ROOT}/scripts/guest/run-flow.sh" "/tmp/run-flow.sh"
     scp_to "${ssh_port}" "/tmp/${browser}.task.json" "/tmp/browse.json"
     scp_to "${ssh_port}" "/tmp/${calc}.task.json" "/tmp/calc.json"
-    ssh -i "${KEY}" -p "${ssh_port}" \
-      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes \
-      -o BatchMode=yes -f \
-      lume@127.0.0.1 \
-      "bash /tmp/run-flow.sh"
+    scp_to "${ssh_port}" "${task_json}" "/tmp/task.json"
   else
     stamp_task "${ROOT}/tasks/osworld/${name}.json" "${task_json}"
     scp_to "${ssh_port}" "${ROOT}/scripts/guest/solve_calc.py" "/tmp/solve_calc.py"
     scp_to "${ssh_port}" "${task_json}" "/tmp/task.json"
-    ssh -i "${KEY}" -p "${ssh_port}" \
-      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes \
-      -o BatchMode=yes -f \
-      lume@127.0.0.1 \
-      "bash -lc 'python3 /tmp/solve_calc.py /tmp/task.json > /tmp/osworld.log 2>&1'"
   fi
-  echo "solver started ${name} (${kind})"
+  # Holds SSH until turn/completed. setsid so the boot script exiting does not SIGHUP it.
+  setsid node "${ROOT}/scripts/drive-guest-turn.mjs" \
+    --port "${ssh_port}" \
+    --key "${KEY}" \
+    --task "${task_json}" \
+    > "${rpc_dir}/${name}.log" 2>&1 < /dev/null &
+  echo $! > "${rpc_dir}/${name}.pid"
+  echo "app-server turn started ${name} (${kind})"
 }
 
 if curl -sf -X POST http://127.0.0.1:4317/api/reset >/dev/null; then

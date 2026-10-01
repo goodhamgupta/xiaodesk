@@ -45,6 +45,28 @@ function channel(pixel: number, shift: number, max: number): number {
   return max === 255 ? value : Math.round((value * 255) / (max || 1));
 }
 
+export const RECORD_FPS = 10;
+export const RECORD_INTERVAL_MS = 100;
+
+export function ffmpegEncodeArgs(file: string, evenW: number, evenH: number): string[] {
+  return [
+    '-loglevel', 'error',
+    '-y',
+    '-f', 'rawvideo',
+    '-pix_fmt', 'rgb24',
+    '-s', `${evenW}x${evenH}`,
+    '-r', String(RECORD_FPS),
+    '-i', 'pipe:0',
+    '-an',
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '16',
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart',
+    file,
+  ];
+}
+
 export interface RecordingHandle {
   file: string;
   guestId: string;
@@ -299,21 +321,7 @@ class RfbRecorder {
   private startFfmpeg(): void {
     const evenW = this.width - (this.width % 2);
     const evenH = this.height - (this.height % 2);
-    const ffmpeg = spawn('ffmpeg', [
-      '-loglevel', 'error',
-      '-y',
-      '-f', 'rawvideo',
-      '-pix_fmt', 'rgb24',
-      '-s', `${evenW}x${evenH}`,
-      '-r', '4',
-      '-i', 'pipe:0',
-      '-an',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart',
-      this.file,
-    ], { stdio: ['pipe', 'ignore', 'pipe'] });
+    const ffmpeg = spawn('ffmpeg', ffmpegEncodeArgs(this.file, evenW, evenH), { stdio: ['pipe', 'ignore', 'pipe'] });
     this.ffmpeg = ffmpeg;
     let stderr = '';
     ffmpeg.stderr.on('data', (chunk) => {
@@ -325,7 +333,7 @@ class RfbRecorder {
     ffmpeg.on('exit', (code) => {
       if (!this.stopped && code !== 0) this.fail(new Error(stderr.trim() || `ffmpeg exited ${code}`));
     });
-    this.timer = setInterval(() => this.writeFrame(evenW, evenH), 250);
+    this.timer = setInterval(() => this.writeFrame(evenW, evenH), RECORD_INTERVAL_MS);
     this.writeFrame(evenW, evenH);
     this.ready?.();
   }

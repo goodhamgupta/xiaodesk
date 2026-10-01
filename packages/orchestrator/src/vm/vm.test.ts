@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assertSnapshotName } from './qmp.js';
-import { blitRaw, type PixelFormat } from './vnc-record.js';
+import { blitRaw, ffmpegEncodeArgs, type PixelFormat } from './vnc-record.js';
 
 const fmt: PixelFormat = {
   bitsPerPixel: 32,
@@ -21,6 +21,17 @@ describe('snapshot names', () => {
   it('rejects spaces and empty names', () => {
     expect(() => assertSnapshotName('lab 1')).toThrow(/snapshot name/);
     expect(() => assertSnapshotName('')).toThrow(/snapshot name/);
+  });
+});
+
+describe('recording encoder', () => {
+  it('samples at 10 fps with a high-quality x264 preset', () => {
+    const args = ffmpegEncodeArgs('/tmp/guest.mp4', 1280, 800);
+    expect(args).toContain('-r');
+    expect(args[args.indexOf('-r') + 1]).toBe('10');
+    expect(args[args.indexOf('-crf') + 1]).toBe('16');
+    expect(args[args.indexOf('-preset') + 1]).toBe('veryfast');
+    expect(args.at(-1)).toBe('/tmp/guest.mp4');
   });
 });
 
