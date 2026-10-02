@@ -51,6 +51,12 @@ else
     "$image" >/dev/null
 fi
 
+# The published xfce image ships the panel launchers and no browser.
+# setup-inside.sh installs firefox-esr; do that here too so a plain boot is usable.
+if ! docker_cmd exec "$name" bash -lc 'command -v firefox-esr >/dev/null || command -v firefox >/dev/null'; then
+  docker_cmd exec "$name" bash -lc 'export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y firefox-esr'
+fi
+
 # Only needed when candidates are rewritten to loopback. pion does not bind
 # the UDP mux on lo, so those checks would get no answer.
 if [[ "${nat_ip}" == "127.0.0.1" ]] && ! ss -uln | grep -q '127.0.0.1:52100'; then

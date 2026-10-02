@@ -20,7 +20,8 @@ sudo apt-get install -y \
   xterm \
   pcmanfm \
   xdotool \
-  scrot
+  scrot \
+  libreoffice-calc
 
 sudo tee /etc/X11/xorg.conf.d/10-vm.conf >/dev/null <<'EOF'
 Section "Device"
