@@ -90,7 +90,7 @@ sudo docker cp scripts/neko/setup-inside.sh workshop-neko:/tmp/setup-inside.sh
 sudo docker exec workshop-neko bash /tmp/setup-inside.sh
 ```
 
-`scripts/boot-neko.sh` starts `workshop-neko` on the host network at [http://127.0.0.1:8341](http://127.0.0.1:8341). Sign in as `neko` / `neko` (admin / `admin`). This machine's dockerd runs with iptables off, so the container uses `--network host` and neko binds `127.0.0.1:8341` directly. WebRTC is ice-lite with `NAT1TO1=127.0.0.1` and UDP `52000-52100`.
+`scripts/boot-neko.sh` starts `workshop-neko` on the host network at [http://127.0.0.1:8341](http://127.0.0.1:8341). Sign in as `neko` / `neko` (admin / `admin`). This machine's dockerd runs with iptables off, so the container uses `--network host` and neko binds `127.0.0.1:8341` directly. WebRTC is ice-lite with `NAT1TO1=127.0.0.1`, a single UDP mux on `52100`, and a TCP mux on `52151` so the viewer still connects when UDP is blocked. STUN is left empty so the browser does not wait on `stun.l.google.com`.
 
 The dashboard at [http://127.0.0.1:4318](http://127.0.0.1:4318) embeds that desktop next to a chat. A message is planned on the host (phrase matcher, no API key, no model) and executed in the container: Firefox, xfce4-terminal, Thunar, clicks, and keys. `scripts/neko/desk-act.py` calls `cua-driver call` for pointer and keyboard, and falls back to xdotool when the daemon does not answer. The QEMU wall, when guests are booted, is [http://127.0.0.1:4318/vms](http://127.0.0.1:4318/vms).
 

@@ -2,6 +2,7 @@
 # Xfce desktop in Docker, streamed by neko. Host network: this machine's
 # dockerd runs with iptables off, so published ports never NAT.
 set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 name="${NEKO_NAME:-workshop-neko}"
 image="${NEKO_IMAGE:-ghcr.io/m1k1o/neko/xfce:latest}"
 bind="${NEKO_BIND:-127.0.0.1:8341}"
@@ -29,11 +30,25 @@ else
     -e NEKO_DESKTOP_SCREEN=1280x800@30 \
     -e NEKO_MEMBER_MULTIUSER_USER_PASSWORD=neko \
     -e NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD=admin \
-    -e NEKO_WEBRTC_EPR=52000-52100 \
+    -e NEKO_WEBRTC_EPR=52100-52200 \
+    -e NEKO_WEBRTC_UDPMUX=52100 \
+    -e NEKO_WEBRTC_TCPMUX=52151 \
     -e NEKO_WEBRTC_ICELITE=true \
+    -e NEKO_WEBRTC_ICETRICKLE=false \
     -e NEKO_WEBRTC_NAT1TO1=127.0.0.1 \
-    -e NEKO_WEBRTC_ICECANDIDATEIP=127.0.0.1 \
+    -e 'NEKO_WEBRTC_ICESERVERS_FRONTEND=[]' \
+    -e 'NEKO_WEBRTC_ICESERVERS_BACKEND=[]' \
+    -e NEKO_SESSION_COOKIE_SECURE=false \
     "$image" >/dev/null
+fi
+
+# pion binds the UDP mux on non-loopback interfaces, then advertises 127.0.0.1.
+if ! ss -uln | grep -q '127.0.0.1:52100'; then
+  if ! pgrep -f 'scripts/neko/udp-mux-lo.py' >/dev/null 2>&1; then
+    setsid python3 "${ROOT}/scripts/neko/udp-mux-lo.py" \
+      > /tmp/neko-udp-mux.log 2>&1 < /dev/null &
+    disown "$!" 2>/dev/null || true
+  fi
 fi
 
 echo "neko ${name} -> http://${bind}  user/neko  admin/admin"
