@@ -267,7 +267,16 @@ for index in "${!CHOSEN[@]}"; do
   fi
   if wait_ssh "${name}" "$((24841 + index))"; then
     alive+=("${index}:${name}:${KINDS[$index]}")
-    scp_to "$((24841 + index))" "${ROOT}/scripts/guest/pin-openbox-desktop.py" "/tmp/pin-openbox-desktop.py"
+    # The baked image has the X packages, but a new overlay has come up without
+    # /etc/systemd/system/workshop-display.service, so DISPLAY=:0 is dead and
+    # the tile stays black. Install the unit and start X before paint.
+    ssh_port="$((24841 + index))"
+    if ! ssh_cmd "${ssh_port}" "test -f /etc/systemd/system/workshop-display.service && systemctl is-active --quiet workshop-display.service"; then
+      echo "starting the VGA desktop on ${name}"
+      ssh_cmd "${ssh_port}" 'bash -s' < "${ROOT}/scripts/guest-display.sh" \
+        || echo "display start failed on ${name}"
+    fi
+    scp_to "${ssh_port}" "${ROOT}/scripts/guest/pin-openbox-desktop.py" "/tmp/pin-openbox-desktop.py"
     ssh_cmd "$((24841 + index))" "sudo DISPLAY=:0 python3 /tmp/pin-openbox-desktop.py && DISPLAY=:0 openbox --reconfigure" \
       || echo "openbox pin failed on ${name}"
     # Paint before the solver. An empty Openbox root is the blank tile on /vms.
