@@ -36,4 +36,11 @@ describe('desk planner', () => {
     expect(plan.actions).toEqual([]);
     expect(plan.say).toMatch(/Chrome/);
   });
+
+  it('plans against the neko home and the fixture host', () => {
+    const files = planDesk('open the file browser at the desktop', { home: '/home/neko' });
+    expect(files.actions).toEqual([{ op: 'files', path: '/home/neko/Desktop' }]);
+    const chrome = planDesk('open chrome to the fixtures', { fixturesUrl: 'http://127.0.0.1:4317' });
+    expect(chrome.actions).toEqual([{ op: 'chrome', url: 'http://127.0.0.1:4317' }]);
+  });
 });

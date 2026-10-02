@@ -1,0 +1,6 @@
+# Codex reaches the neko desktop through Cua Driver's stdio MCP server.
+# The daemon (`cua-driver serve`) runs inside the workshop-neko container
+# on DISPLAY=:99.0. This command is the host-side wrapper.
+
+[mcp_servers.cua-driver]
+command = "/workspace/scripts/neko/cua-driver-mcp.sh"

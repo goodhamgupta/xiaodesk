@@ -8,9 +8,11 @@ import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { Duplex } from 'stream';
 import type { DashboardState, VmDisplay } from '../types.js';
 import { dashboardPage } from './page.js';
+import { nekoPage } from './neko-page.js';
 import { listSnapshots, loadVm, saveVm } from '../vm/qmp.js';
 import { startVncRecording, type RecordingHandle } from '../vm/vnc-record.js';
 import { runDeskChat, type DeskEvent } from '../computer/desk.js';
+import { runNekoChat } from '../computer/neko.js';
 
 export interface DashboardOptions {
   recordingsDir?: string;
@@ -60,7 +62,33 @@ export class DashboardServer {
     this.app.use('/novnc', express.static(novncRoot));
 
     this.app.get('/', (_req, res) => {
+      res.type('html').send(nekoPage(process.env.NEKO_URL || 'http://127.0.0.1:8341'));
+    });
+
+    this.app.get('/vms', (_req, res) => {
       res.type('html').send(dashboardPage());
+    });
+
+    this.app.get('/api/neko', (_req, res) => {
+      res.json({
+        url: process.env.NEKO_URL || 'http://127.0.0.1:8341',
+        container: process.env.NEKO_NAME || 'workshop-neko',
+        display: process.env.NEKO_DISPLAY || ':99.0',
+        user: 'neko',
+        password: 'neko',
+        admin_password: 'admin',
+      });
+    });
+
+    this.app.get('/api/neko/chat', (_req, res) => {
+      res.json({ messages: this.chats.get('neko') || [] });
+    });
+
+    this.app.post('/api/neko/chat', (req, res) => {
+      this.streamNekoChat(String(req.body?.message || ''), res).catch((error) => {
+        if (!res.headersSent) fail(res, error);
+        else res.end();
+      });
     });
 
     this.app.get('/events', (req, res) => {
@@ -330,6 +358,46 @@ export class DashboardServer {
     const rows = this.chats.get(guestId) || [];
     rows.push(line);
     this.chats.set(guestId, rows.slice(-80));
+  }
+
+  private async streamNekoChat(message: string, res: Response): Promise<void> {
+    const guestId = 'neko';
+    const text = message.trim();
+    if (!text) throw Object.assign(new Error('message is empty'), { status: 400 });
+    if (text.length > 4000) throw Object.assign(new Error('message is too long'), { status: 400 });
+    if (this.deskBusy.has(guestId)) throw Object.assign(new Error('this desktop is already working on a message'), { status: 409 });
+    const root = this.repoRoot();
+    this.deskBusy.add(guestId);
+    this.remember(guestId, { role: 'user', text });
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    const send = (event: DeskEvent) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (event.type === 'assistant' || event.type === 'error') {
+        this.remember(guestId, { role: event.type, text: event.text || '' });
+      } else if (event.type === 'action') {
+        this.remember(guestId, { role: 'action', text: event.text || event.op || '' });
+      } else if (event.type === 'shot' && event.file) {
+        this.remember(guestId, { role: 'action', text: event.text || 'screen', file: event.file });
+      }
+    };
+    try {
+      for await (const event of runNekoChat({
+        message: text,
+        repoRoot: root,
+        shotsDir: join(root, 'runs/desk-shots'),
+      })) {
+        send(event);
+      }
+    } catch (error) {
+      send({ type: 'error', text: error instanceof Error ? error.message : String(error) });
+      send({ type: 'done' });
+    } finally {
+      this.deskBusy.delete(guestId);
+      res.end();
+    }
   }
 
   private async streamChat(id: string, message: string, res: Response): Promise<void> {

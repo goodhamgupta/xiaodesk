@@ -17,18 +17,24 @@ export interface DeskPlan {
   actions: DeskAction[];
 }
 
-const HOME = '/home/lume';
+export interface PlanContext {
+  home?: string;
+  fixturesUrl?: string;
+}
+
+const DEFAULT_HOME = '/home/lume';
+const DEFAULT_FIXTURES = 'http://10.0.2.2:4317';
 
 function shQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function extractUrl(text: string): string {
+function extractUrl(text: string, fixturesUrl: string): string {
   const explicit = text.match(/https?:\/\/[^\s)]+/i);
   if (explicit) return explicit[0].replace(/[.,]$/, '');
   const www = text.match(/\bwww\.[^\s)]+/i);
   if (www) return `https://${www[0].replace(/[.,]$/, '')}`;
-  if (/\bfixtures?\b/i.test(text)) return 'http://10.0.2.2:4317';
+  if (/\bfixtures?\b/i.test(text)) return fixturesUrl;
   const search = text.match(/\b(?:search|google)\s+(?:the web\s+)?(?:for\s+)?(.+)/i);
   if (search && !/\bterminal\b|\bfiles?\b/i.test(text)) {
     return `https://www.google.com/search?q=${encodeURIComponent(search[1].replace(/[?.!]$/, '').trim())}`;
@@ -36,18 +42,18 @@ function extractUrl(text: string): string {
   return '';
 }
 
-function extractPath(text: string): string {
+function extractPath(text: string, home: string): string {
   const abs = text.match(/(?:^|[\s"'])(\/(?:home|tmp|opt|etc|usr|var)\/[A-Za-z0-9._~/-]*)/);
   if (abs) return abs[1];
   const tiled = text.match(/~\/([A-Za-z0-9._/-]+)/);
-  if (tiled) return `${HOME}/${tiled[1]}`;
-  if (/\bdesktop\b/i.test(text)) return `${HOME}/Desktop`;
-  if (/\bdownloads?\b/i.test(text)) return `${HOME}/Downloads`;
-  if (/\bhome\b/i.test(text)) return HOME;
+  if (tiled) return `${home}/${tiled[1]}`;
+  if (/\bdesktop\b/i.test(text)) return `${home}/Desktop`;
+  if (/\bdownloads?\b/i.test(text)) return `${home}/Downloads`;
+  if (/\bhome\b/i.test(text)) return home;
   return '';
 }
 
-function extractCommand(text: string): string {
+function extractCommand(text: string, home: string): string {
   const quoted = text.match(/`([^`]+)`/);
   if (quoted) return quoted[1].trim();
   const run = text.match(/\b(?:run|execute)\s+(.+)/i);
@@ -55,16 +61,16 @@ function extractCommand(text: string): string {
   const leading = text.match(/^\s*(ls|echo|cat|pwd|date|uname|mkdir|touch|ps|df|curl|python3|node|cd|cp|mv|rm|head|tail|wc|whoami)\b(.*)$/i);
   if (leading) return `${leading[1]}${leading[2]}`.trim();
   if (/\blist (?:the )?(?:files|directory|dir)\b/i.test(text)) {
-    const path = extractPath(text);
+    const path = extractPath(text, home);
     return path ? `ls -la ${shQuote(path)}` : 'ls -la';
   }
   return '';
 }
 
-function extractFileWrite(text: string): { path: string; body: string } | null {
+function extractFileWrite(text: string, home: string): { path: string; body: string } | null {
   const match = text.match(/\b(?:create|write|make)\s+(?:a\s+)?file\s+(?:called\s+|named\s+)?([A-Za-z0-9._/-]+)(?:\s+on the desktop)?(?:\s+(?:that\s+)?(?:says|with|containing)\s+)(.+)/i);
   if (!match) return null;
-  const name = match[1].startsWith('/') ? match[1] : `${/\bdesktop\b/i.test(text) ? `${HOME}/Desktop` : HOME}/${match[1]}`;
+  const name = match[1].startsWith('/') ? match[1] : `${/\bdesktop\b/i.test(text) ? `${home}/Desktop` : home}/${match[1]}`;
   return { path: name, body: match[2].replace(/[?.!]$/, '').trim() };
 }
 
@@ -77,12 +83,12 @@ function keyName(raw: string): string {
   return raw.trim();
 }
 
-function clauseActions(text: string): DeskAction[] {
+function clauseActions(text: string, home: string, fixturesUrl: string): DeskAction[] {
   const actions: DeskAction[] = [];
-  const url = extractUrl(text);
-  const path = extractPath(text);
-  const command = extractCommand(text);
-  const written = extractFileWrite(text);
+  const url = extractUrl(text, fixturesUrl);
+  const path = extractPath(text, home);
+  const command = extractCommand(text, home);
+  const written = extractFileWrite(text, home);
   const wantsChrome = /\b(chrome|chromium|website|web page)\b/i.test(text)
     || (/\bbrowser\b/i.test(text) && !/\bfile browser\b/i.test(text))
     || Boolean(url);
@@ -100,11 +106,11 @@ function clauseActions(text: string): DeskAction[] {
   if (click) actions.push({ op: 'click', x: Number(click[1]), y: Number(click[2]) });
   else if (center) actions.push({ op: 'click', x: 640, y: 400 });
   if (wantsChrome) actions.push({ op: 'chrome', url: url || 'about:blank' });
-  if (wantsFiles) actions.push({ op: 'files', path: path || HOME });
+  if (wantsFiles) actions.push({ op: 'files', path: path || home });
   if (written) {
     const line = `mkdir -p $(dirname ${shQuote(written.path)}) && printf %s ${shQuote(written.body)} > ${shQuote(written.path)}`;
     actions.push({ op: 'terminal', command: line });
-    if (!wantsFiles) actions.push({ op: 'files', path: written.path.replace(/\/[^/]+$/, '') || HOME });
+    if (!wantsFiles) actions.push({ op: 'files', path: written.path.replace(/\/[^/]+$/, '') || home });
   } else if (wantsTerm || (command && !wantsChrome)) {
     actions.push({ op: 'terminal', command: command || undefined });
   } else if (command && wantsChrome && /\b(run|execute)\b/i.test(text)) {
@@ -120,10 +126,10 @@ function clauseActions(text: string): DeskAction[] {
   return actions;
 }
 
-function describe(action: DeskAction): string {
-  if (action.op === 'chrome') return `Open Chrome at ${action.url || 'a blank page'}.`;
+function describe(action: DeskAction, home: string): string {
+  if (action.op === 'chrome') return `Open the browser at ${action.url || 'a blank page'}.`;
   if (action.op === 'terminal') return action.command ? `Type \`${action.command}\` in the terminal.` : 'Open the terminal.';
-  if (action.op === 'files') return `Open the file browser at ${action.path || HOME}.`;
+  if (action.op === 'files') return `Open the file browser at ${action.path || home}.`;
   if (action.op === 'type') return `Type "${action.text || ''}".`;
   if (action.op === 'key') return `Press ${action.key}.`;
   if (action.op === 'click') return `Click ${action.x},${action.y}.`;
@@ -131,21 +137,23 @@ function describe(action: DeskAction): string {
   return `Run \`${action.command || ''}\`.`;
 }
 
-export function planDesk(message: string): DeskPlan {
+export function planDesk(message: string, context: PlanContext = {}): DeskPlan {
+  const home = context.home || DEFAULT_HOME;
+  const fixturesUrl = context.fixturesUrl || DEFAULT_FIXTURES;
   const text = message.trim();
   if (!text) {
     return {
-      say: 'Send a message. I can open Chrome, the terminal, or the file browser and type on this desktop.',
+      say: 'Send a message. I can open the browser, the terminal, or the file browser and type on this desktop.',
       actions: [],
     };
   }
   const parts = text.split(/\n+|\s+\bthen\b\s+/i).map((part) => part.trim()).filter(Boolean);
-  const actions = parts.flatMap((part) => clauseActions(part));
+  const actions = parts.flatMap((part) => clauseActions(part, home, fixturesUrl));
   if (!actions.length) {
     return {
-      say: 'I drive this desktop: Chrome, the terminal, and the file browser. Try "open the terminal and run uname -a" or "open Chrome to http://10.0.2.2:4317".',
+      say: `I drive this desktop: the browser, the terminal, and the file browser. Try "open the terminal and run uname -a" or "open Chrome to ${fixturesUrl}".`,
       actions: [],
     };
   }
-  return { say: actions.map(describe).join(' '), actions };
+  return { say: actions.map((action) => describe(action, home)).join(' '), actions };
 }

@@ -80,6 +80,29 @@ That flag does not require Mac hardware. Here, guests are processes, so do not a
 
 The summary prints `peak concurrent guests` and `backpressure events`. Unit tests lock the same math.
 
+## Neko desk
+
+The workshop desktop is Xfce in Docker, streamed by [neko](https://github.com/m1k1o/neko). Chat on the dashboard drives that container. The `lume` / QEMU driver is still the microVM path for the isolation lab; the desk does not boot it.
+
+```bash
+./scripts/boot-neko.sh
+sudo docker cp scripts/neko/setup-inside.sh workshop-neko:/tmp/setup-inside.sh
+sudo docker exec workshop-neko bash /tmp/setup-inside.sh
+```
+
+`scripts/boot-neko.sh` starts `workshop-neko` on the host network at [http://127.0.0.1:8341](http://127.0.0.1:8341). Sign in as `neko` / `neko` (admin / `admin`). This machine's dockerd runs with iptables off, so the container uses `--network host` and neko binds `127.0.0.1:8341` directly. WebRTC is ice-lite with `NAT1TO1=127.0.0.1` and UDP `52000-52100`.
+
+The dashboard at [http://127.0.0.1:4318](http://127.0.0.1:4318) embeds that desktop next to a chat. A message is planned on the host (phrase matcher, no API key, no model) and executed in the container: Firefox, xfce4-terminal, Thunar, clicks, and keys. `scripts/neko/desk-act.py` calls `cua-driver call` for pointer and keyboard, and falls back to xdotool when the daemon does not answer. The QEMU wall, when guests are booted, is [http://127.0.0.1:4318/vms](http://127.0.0.1:4318/vms).
+
+Cua Driver is installed for the `neko` user. `cua-driver serve` runs in that session on `DISPLAY=:99.0`. Codex talks to it through the host wrapper, which is `docker exec -i` of `cua-driver mcp` inside the container. The project config is `.codex/config.toml`:
+
+```toml
+[mcp_servers.cua-driver]
+command = "/workspace/scripts/neko/cua-driver-mcp.sh"
+```
+
+With the `codex` CLI on `PATH`, the same registration is `codex mcp add cua-driver -- /workspace/scripts/neko/cua-driver-mcp.sh`. Copy `.codex/config.toml` to `~/.codex/config.toml` if you want it user-wide. The driver skill pack is `.agents/skills/cua-driver` (also linked for the `neko` user at `~/.agents/skills/cua-driver`). There is no `codex` binary in this lab image, and the chat does not pretend otherwise.
+
 ## Run the demo
 
 The default driver is `lume`: a real guest VM and a local Agents API control plane. It does not need an OpenAI key. Build the Debian image once, then run a short VM batch (a guest is ~1.5 GB, so the default cap is 1):
@@ -103,7 +126,7 @@ What that does:
 3. Enqueues the 24 job cards in `tasks/batch-24.yaml`.
 4. Admits guests up to the RAM cap. `lume` boots a VM, the webhook worker starts `codex exec-server`, and the stub drives Playwright Chromium inside the guest. `--driver process` skips the VM and speaks app-server JSON-RPC to a local Node process.
 5. Scores each job against SQLite and the fixture HTTP API.
-6. Prints pass/fail, queue stats, peak concurrency, and backpressure. The HTML dashboard is [http://127.0.0.1:4318](http://127.0.0.1:4318). Each tile is that guest's VGA framebuffer (QEMU or lume VNC, drawn with noVNC). Click the picture to move the pointer and type. Double-click the title to open that screen full size. Add `--exit` to stop when the queue drains; omit it to leave the dashboard serving.
+6. Prints pass/fail, queue stats, peak concurrency, and backpressure. The HTML dashboard is [http://127.0.0.1:4318](http://127.0.0.1:4318). `/` is the neko desk and chat. `/vms` is the QEMU or lume VGA wall (noVNC) when those guests are booted. Add `--exit` to stop when the queue drains; omit it to leave the dashboard serving.
 
 Useful slices:
 
@@ -160,7 +183,9 @@ packages/guest-agent/   mock app-server, browser tool, stub agent, exec-server
 packages/agents-api/    local Agents API control plane
 packages/evals/         deterministic checkers
 tasks/                  job cards + batch-24
-drivers/                lume (default), process, docker, microvm alias
+drivers/                lume (microVM), process, docker, microvm alias
+scripts/neko/           cua-driver MCP wrapper and in-container desk actions
+.codex/config.toml      Codex MCP registration for the neko driver
 scripts/                bootstrap, run-demo, reset-fixtures
 docs/                   workshop writeups
 ```
