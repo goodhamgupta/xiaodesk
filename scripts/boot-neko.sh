@@ -6,6 +6,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 name="${NEKO_NAME:-workshop-neko}"
 image="${NEKO_IMAGE:-ghcr.io/m1k1o/neko/xfce:latest}"
 bind="${NEKO_BIND:-127.0.0.1:8341}"
+# pion rewrites every candidate to this address, so it must be an address
+# that actually has the UDP mux socket. 127.0.0.1 is not one of those.
+nat_ip="${NEKO_NAT_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')}"
+nat_ip="${nat_ip:-127.0.0.1}"
 
 if [[ -S /var/run/docker.sock ]]; then
   chmod 666 /var/run/docker.sock 2>/dev/null || sudo -n chmod 666 /var/run/docker.sock || true
@@ -35,15 +39,16 @@ else
     -e NEKO_WEBRTC_TCPMUX=52151 \
     -e NEKO_WEBRTC_ICELITE=true \
     -e NEKO_WEBRTC_ICETRICKLE=false \
-    -e NEKO_WEBRTC_NAT1TO1=127.0.0.1 \
+    -e "NEKO_WEBRTC_NAT1TO1=${nat_ip}" \
     -e 'NEKO_WEBRTC_ICESERVERS_FRONTEND=[]' \
     -e 'NEKO_WEBRTC_ICESERVERS_BACKEND=[]' \
     -e NEKO_SESSION_COOKIE_SECURE=false \
     "$image" >/dev/null
 fi
 
-# pion binds the UDP mux on non-loopback interfaces, then advertises 127.0.0.1.
-if ! ss -uln | grep -q '127.0.0.1:52100'; then
+# Only needed when candidates are rewritten to loopback. pion does not bind
+# the UDP mux on lo, so those checks would get no answer.
+if [[ "${nat_ip}" == "127.0.0.1" ]] && ! ss -uln | grep -q '127.0.0.1:52100'; then
   if ! pgrep -f 'scripts/neko/udp-mux-lo.py' >/dev/null 2>&1; then
     setsid python3 "${ROOT}/scripts/neko/udp-mux-lo.py" \
       > /tmp/neko-udp-mux.log 2>&1 < /dev/null &
