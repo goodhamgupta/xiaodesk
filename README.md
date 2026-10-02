@@ -138,7 +138,7 @@ On this Linux host the guests are QEMU TCG. Nested KVM does not boot. A 1024MB C
 ./scripts/boot-osworld-wall.sh
 ```
 
-Framebuffers show up on the dashboard. Click a screen to type. Double-click the title and the framebuffer fills the stage. Record writes `runs/recordings/*.mp4` (one guest at a time, 10 fps, libx264 CRF 16) and the page replays them. Snapshot and Restore send `savevm` / `loadvm` over the guest's QMP socket (`runs/vm-control.json`), which pauses the guest while QEMU writes memory and the qcow2 overlay. `scripts/grade-osworld.ts` scores ODS artifacts and the Chrome fixture rows.
+Framebuffers show up on the dashboard. Click a screen to type. Double-click the title, or press Chat, and the framebuffer fills the stage next to a desk chat. A message there is a desktop turn: the host plans Chrome, xterm, or the file browser, then `scripts/guest/desk-act.mjs` types and clicks on `DISPLAY=:0`. Record writes `runs/recordings/*.mp4` (one guest at a time, 10 fps, libx264 CRF 16) and the page replays them. Snapshot and Restore send `savevm` / `loadvm` over the guest's QMP socket (`runs/vm-control.json`), which pauses the guest while QEMU writes memory and the qcow2 overlay. `scripts/grade-osworld.ts` scores ODS artifacts and the Chrome fixture rows.
 
 `booking-008` loads a slot, marks it sold out, submits, gets `slot_unavailable`, backs off, and books the next slot that still satisfies the constraints. The host queue is the other backoff: jobs sit in the queue while admission is closed.
 

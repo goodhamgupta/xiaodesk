@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_menu xmlns="http://openbox.org/3.4/menu">
+  <menu id="root-menu" label="Desk">
+    <item label="Chrome">
+      <action name="Execute">
+        <command>bash /usr/local/bin/desk-chrome</command>
+      </action>
+    </item>
+    <item label="Terminal">
+      <action name="Execute">
+        <command>xterm -class DeskTerm -fa "DejaVu Sans Mono" -fs 14 -bg "#0c1220" -fg "#e7ecf5"</command>
+      </action>
+    </item>
+    <item label="Files">
+      <action name="Execute">
+        <command>pcmanfm --class=deskfiles -n /home/lume</command>
+      </action>
+    </item>
+  </menu>
+</openbox_menu>

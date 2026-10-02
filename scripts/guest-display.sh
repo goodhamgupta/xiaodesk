@@ -16,7 +16,11 @@ sudo apt-get install -y \
   x11-xserver-utils \
   x11-utils \
   fonts-dejavu-core \
-  dbus-x11
+  dbus-x11 \
+  xterm \
+  pcmanfm \
+  xdotool \
+  scrot
 
 sudo tee /etc/X11/xorg.conf.d/10-vm.conf >/dev/null <<'EOF'
 Section "Device"

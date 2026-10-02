@@ -10,10 +10,18 @@ import type { DashboardState, VmDisplay } from '../types.js';
 import { dashboardPage } from './page.js';
 import { listSnapshots, loadVm, saveVm } from '../vm/qmp.js';
 import { startVncRecording, type RecordingHandle } from '../vm/vnc-record.js';
+import { runDeskChat, type DeskEvent } from '../computer/desk.js';
 
 export interface DashboardOptions {
   recordingsDir?: string;
   controlFile?: string;
+  repoRoot?: string;
+}
+
+interface ChatLine {
+  role: 'user' | 'assistant' | 'action' | 'error';
+  text: string;
+  file?: string;
 }
 
 const novncRoot = join(dirname(fileURLToPath(import.meta.url)), '../../vendor/novnc');
@@ -37,6 +45,8 @@ export class DashboardServer {
   private displays = new Map<string, RegisteredDisplay>();
 
   private recording: RecordingHandle | null = null;
+  private chats = new Map<string, ChatLine[]>();
+  private deskBusy = new Set<string>();
 
   constructor(
     private port: number = 4200,
@@ -128,6 +138,31 @@ export class DashboardServer {
         (body) => res.json(body),
         (error) => fail(res, error),
       );
+    });
+
+    this.app.get('/api/vms/:id/chat', (req, res) => {
+      try {
+        const guestId = this.guestId(req.params.id);
+        res.json({ messages: this.chats.get(guestId) || [] });
+      } catch (error) {
+        fail(res, error);
+      }
+    });
+
+    this.app.post('/api/vms/:id/chat', (req, res) => {
+      this.streamChat(req.params.id, String(req.body?.message || ''), res).catch((error) => {
+        if (!res.headersSent) fail(res, error);
+        else res.end();
+      });
+    });
+
+    this.app.get('/api/desk-shots/:file', (req, res) => {
+      const file = this.shotPath(req.params.file);
+      if (!file) {
+        res.status(404).json({ error: 'shot not found' });
+        return;
+      }
+      res.sendFile(file);
     });
   }
 
@@ -256,6 +291,100 @@ export class DashboardServer {
     const base = basename(file);
     if (!/^[a-z0-9][a-z0-9._-]{0,120}\.mp4$/i.test(base)) return null;
     const full = join(this.recordingsDir(), base);
+    try {
+      if (!statSync(full).isFile()) return null;
+    } catch {
+      return null;
+    }
+    return full;
+  }
+
+  private repoRoot(): string {
+    if (this.options.repoRoot) return this.options.repoRoot;
+    if (this.options.controlFile) return join(this.options.controlFile, '../..');
+    return join(dirname(fileURLToPath(import.meta.url)), '../../../..');
+  }
+
+  private guestLink(guestId: string): { sshPort: number } {
+    const display = this.displays.get(guestId);
+    if (!display) throw Object.assign(new Error('guest display is not registered'), { status: 404 });
+    let sshPort = display.vncPort - 5941 + 24841;
+    const file = this.options.controlFile;
+    if (file) {
+      try {
+        const parsed = JSON.parse(readFileSync(file, 'utf8')) as Record<string, { sshPort?: number; vncPort?: number }>;
+        const row = parsed[guestId];
+        if (row?.sshPort) sshPort = Number(row.sshPort);
+        else if (row?.vncPort) sshPort = Number(row.vncPort) - 5941 + 24841;
+      } catch {
+        /* the display port mapping is the fallback */
+      }
+    }
+    if (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535) {
+      throw Object.assign(new Error('this guest has no SSH port'), { status: 409 });
+    }
+    return { sshPort };
+  }
+
+  private remember(guestId: string, line: ChatLine): void {
+    const rows = this.chats.get(guestId) || [];
+    rows.push(line);
+    this.chats.set(guestId, rows.slice(-80));
+  }
+
+  private async streamChat(id: string, message: string, res: Response): Promise<void> {
+    const guestId = this.guestId(id);
+    const text = message.trim();
+    if (!text) throw Object.assign(new Error('message is empty'), { status: 400 });
+    if (text.length > 4000) throw Object.assign(new Error('message is too long'), { status: 400 });
+    if (!this.displays.has(guestId)) throw Object.assign(new Error('guest display is not registered'), { status: 404 });
+    if (this.deskBusy.has(guestId)) throw Object.assign(new Error('this desktop is already working on a message'), { status: 409 });
+    const link = this.guestLink(guestId);
+    const root = this.repoRoot();
+    this.deskBusy.add(guestId);
+    this.remember(guestId, { role: 'user', text });
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    const send = (event: DeskEvent) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (event.type === 'assistant' || event.type === 'error') {
+        this.remember(guestId, { role: event.type, text: event.text || '' });
+      } else if (event.type === 'action') {
+        this.remember(guestId, { role: 'action', text: event.text || event.op || '' });
+      } else if (event.type === 'shot' && event.file) {
+        this.remember(guestId, { role: 'action', text: event.text || 'screen', file: event.file });
+      }
+    };
+    try {
+      for await (const event of runDeskChat({
+        guestId,
+        message: text,
+        sshPort: link.sshPort,
+        keyPath: join(root, 'images/guest_ed25519'),
+        repoRoot: root,
+        shotsDir: join(root, 'runs/desk-shots'),
+      })) {
+        send(event);
+      }
+    } catch (error) {
+      send({ type: 'error', text: error instanceof Error ? error.message : String(error) });
+      send({ type: 'done' });
+    } finally {
+      this.deskBusy.delete(guestId);
+      res.end();
+    }
+  }
+
+  private shotsDir(): string {
+    return join(this.repoRoot(), 'runs/desk-shots');
+  }
+
+  private shotPath(file: string): string | null {
+    const base = basename(file);
+    if (!/^[a-z0-9][a-z0-9._-]{0,120}\.png$/i.test(base)) return null;
+    const full = join(this.shotsDir(), base);
     try {
       if (!statSync(full).isFile()) return null;
     } catch {

@@ -124,7 +124,7 @@ boot_one() {
   local title
   title="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"].replace(",", ""))' "${ROOT}/tasks/osworld/${name}.json")"
   DISPLAYS+=("${name}@${vnc_port}@${title}")
-  CONTROL_LINES+=("${name} ${vnc_port} ${qmp}")
+  CONTROL_LINES+=("${name} ${vnc_port} ${ssh_port} ${qmp}")
 }
 
 for index in "${!CHOSEN[@]}"; do
@@ -140,8 +140,8 @@ import json, sys
 path, *rows = sys.argv[1:]
 control = {}
 for row in rows:
-    name, port, qmp = row.split(" ", 2)
-    control[name] = {"qmp": qmp, "vncPort": int(port)}
+    name, port, ssh_port, qmp = row.split(" ", 3)
+    control[name] = {"qmp": qmp, "vncPort": int(port), "sshPort": int(ssh_port)}
 json.dump(control, open(path, "w"), indent=2)
 print("vm-control", path, list(control))
 PY

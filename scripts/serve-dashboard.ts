@@ -39,6 +39,7 @@ const state: DashboardState = {
 const server = new DashboardServer(port, {
   recordingsDir: join(repoRoot, 'runs/recordings'),
   controlFile: join(repoRoot, 'runs/vm-control.json'),
+  repoRoot,
 });
 server.start();
 server.broadcast(state);

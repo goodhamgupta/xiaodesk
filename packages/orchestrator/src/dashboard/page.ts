@@ -45,13 +45,32 @@ export function dashboardPage(): string {
     .recording { margin: 0 0 1.1rem; }
     .recording strong { display: block; margin-bottom: 0.35rem; font-size: 0.85rem; }
     .recording video { width: min(960px, 100%); background: #000; border-radius: 10px; }
+    .stage-body { flex: 1 1 auto; min-height: 0; display: flex; }
+    .desk { width: 360px; flex: 0 0 360px; display: flex; flex-direction: column; background: #0c1220; border-left: 1px solid #243049; min-height: 0; }
+    .desk-head { padding: 0.7rem 0.85rem 0.35rem; }
+    .desk-head strong { display: block; }
+    .desk-head span { color: #8ea0bd; font-size: 0.75rem; }
+    .desk-log { flex: 1 1 auto; overflow: auto; padding: 0.4rem 0.85rem 0.8rem; display: flex; flex-direction: column; gap: 0.45rem; }
+    .bubble { border-radius: 10px; padding: 0.45rem 0.6rem; font-size: 0.86rem; line-height: 1.35; white-space: pre-wrap; }
+    .bubble.user { background: #1b2740; align-self: flex-end; max-width: 95%; }
+    .bubble.assistant { background: #121a2b; border: 1px solid #243049; }
+    .bubble.action { background: transparent; color: #9be7c4; font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0.1rem 0.2rem; }
+    .bubble.error { background: #3a1d1d; color: #f0b4b4; }
+    .bubble img { width: 100%; border-radius: 8px; margin-top: 0.35rem; display: block; }
+    .desk form { display: flex; gap: 0.4rem; padding: 0.7rem; border-top: 1px solid #243049; align-items: end; }
+    .desk textarea { flex: 1; resize: none; background: #070b14; color: #e7ecf5; border: 1px solid #31415f; border-radius: 8px; padding: 0.45rem 0.55rem; font: inherit; }
+    .chat-btn { font-size: 0.75rem; }
+    @media (max-width: 800px) {
+      .stage-body { flex-direction: column; }
+      .desk { width: 100%; flex-basis: 46%; border-left: 0; border-top: 1px solid #243049; }
+    }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>VM screens</h1>
-      <p>Each tile is that guest's framebuffer. Click a screen to move the pointer and type. Double-click the title to fill the stage. Record writes an mp4 you can replay below. Snapshot and Restore use QEMU's savevm and loadvm.</p>
+      <p>Each tile is that guest's framebuffer. Click a screen to move the pointer and type. Double-click the title, or press Chat, to open the desk. Send a message and the desktop opens Chrome, a terminal, or the file browser and types for you. Record writes an mp4 you can replay below. Snapshot and Restore use QEMU's savevm and loadvm.</p>
     </div>
     <div id="connection" class="connection">Connecting</div>
   </header>
@@ -75,7 +94,20 @@ export function dashboardPage(): string {
       </div>
     </div>
     <p id="stage-note"></p>
-    <div id="stage-screen" class="screen"></div>
+    <div class="stage-body">
+      <div id="stage-screen" class="screen"></div>
+      <aside class="desk" id="desk">
+        <div class="desk-head">
+          <strong>Desk</strong>
+          <span>Chrome, a terminal, and the file browser. The message is typed on this screen.</span>
+        </div>
+        <div id="desk-log" class="desk-log"></div>
+        <form id="desk-form">
+          <textarea id="desk-input" rows="3" placeholder="Open the terminal and run uname -a"></textarea>
+          <button id="desk-send" type="submit">Send</button>
+        </form>
+      </aside>
+    </div>
   </div>
   <script type="module">
     import RFB from '/novnc/core/rfb.js';
@@ -152,6 +184,7 @@ export function dashboardPage(): string {
       note('');
       stageScreen.append(tile.screen);
       fit(tile);
+      loadChat(id);
     }
 
     function closeStage() {
@@ -177,6 +210,101 @@ export function dashboardPage(): string {
       if (!res.ok) throw new Error(data.error || res.statusText);
       return data;
     }
+
+    const deskLog = document.getElementById('desk-log');
+    const deskForm = document.getElementById('desk-form');
+    const deskInput = document.getElementById('desk-input');
+    const deskSend = document.getElementById('desk-send');
+
+    function addBubble(role, text, file) {
+      const node = document.createElement('div');
+      node.className = 'bubble ' + (role || 'assistant');
+      node.textContent = text || '';
+      if (file) {
+        const img = document.createElement('img');
+        img.alt = 'Desktop after the turn';
+        img.src = '/api/desk-shots/' + encodeURIComponent(file);
+        node.append(img);
+      }
+      deskLog.append(node);
+      deskLog.scrollTop = deskLog.scrollHeight;
+    }
+
+    async function loadChat(id) {
+      deskLog.replaceChildren();
+      try {
+        const res = await fetch('/api/vms/' + encodeURIComponent(id) + '/chat');
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const message of data.messages || []) addBubble(message.role, message.text, message.file);
+      } catch (err) {
+        addBubble('error', err.message);
+      }
+    }
+
+    function takeEvents(buf) {
+      const events = [];
+      let rest = buf;
+      let split = rest.indexOf('\\n\\n');
+      while (split >= 0) {
+        const block = rest.slice(0, split);
+        rest = rest.slice(split + 2);
+        split = rest.indexOf('\\n\\n');
+        const line = block.split('\\n').filter((item) => item.indexOf('data:') === 0).map((item) => item.slice(5).trim()).join('\\n');
+        if (!line) continue;
+        events.push(JSON.parse(line));
+      }
+      return { events: events, rest: rest };
+    }
+
+    deskInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        deskForm.requestSubmit();
+      }
+    });
+
+    deskForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!stageId) return;
+      const message = deskInput.value.trim();
+      if (!message) return;
+      deskInput.value = '';
+      addBubble('user', message);
+      deskSend.disabled = true;
+      try {
+        const res = await fetch('/api/vms/' + encodeURIComponent(stageId) + '/chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ message: message }),
+        });
+        if (!res.ok || !res.body) {
+          const data = await res.json().catch(function () { return {}; });
+          throw new Error(data.error || res.statusText);
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const step = await reader.read();
+          if (step.done) break;
+          buf += decoder.decode(step.value, { stream: true });
+          const parsed = takeEvents(buf);
+          buf = parsed.rest;
+          for (const payload of parsed.events) {
+            if (payload.type === 'assistant') addBubble('assistant', payload.text);
+            else if (payload.type === 'action') addBubble('action', payload.text);
+            else if (payload.type === 'error') addBubble('error', payload.text);
+            else if (payload.type === 'shot') addBubble('action', payload.text || 'Screen', payload.file);
+          }
+        }
+      } catch (err) {
+        addBubble('error', err.message);
+      } finally {
+        deskSend.disabled = false;
+        deskInput.focus();
+      }
+    });
 
     document.getElementById('rec-start').addEventListener('click', async () => {
       if (!stageId) return;
@@ -256,7 +384,7 @@ export function dashboardPage(): string {
     document.getElementById('stage-close').addEventListener('click', closeStage);
     window.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape' || !stageId) return;
-      if (event.target instanceof Element && event.target.closest('.screen')) return;
+      if (event.target instanceof Element && event.target.closest('.screen, .desk')) return;
       closeStage();
     });
 
@@ -319,7 +447,16 @@ export function dashboardPage(): string {
           const hint = document.createElement('div');
           hint.className = 'hint';
           hint.textContent = 'Double-click title to open';
-          meta.append(titles, hint);
+          const chat = document.createElement('button');
+          chat.type = 'button';
+          chat.className = 'chat-btn';
+          chat.textContent = 'Chat';
+          chat.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openStage(display.guest_id);
+          });
+          meta.append(titles, hint, chat);
           meta.addEventListener('dblclick', (event) => {
             event.preventDefault();
             event.stopPropagation();
