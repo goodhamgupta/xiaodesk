@@ -146,7 +146,9 @@ export function dashboardPage(): string {
     const stageObserver = new ResizeObserver(() => {
       if (!stageId) return;
       const tile = tiles.get(stageId);
-      if (tile && tile.rfb) tile.rfb.scaleViewport = true;
+      if (!tile) return;
+      if (tile.kind === 'neko') placeNeko(tile);
+      else if (tile.rfb) tile.rfb.scaleViewport = true;
     });
     stageObserver.observe(stageScreen);
 
@@ -154,7 +156,22 @@ export function dashboardPage(): string {
       stageNote.textContent = text || '';
     }
 
+    function placeNeko(tile) {
+      const rect = stageScreen.getBoundingClientRect();
+      tile.screen.style.position = 'fixed';
+      tile.screen.style.zIndex = '25';
+      tile.screen.style.top = rect.top + 'px';
+      tile.screen.style.left = rect.left + 'px';
+      tile.screen.style.width = rect.width + 'px';
+      tile.screen.style.height = rect.height + 'px';
+      tile.screen.style.aspectRatio = 'auto';
+    }
+
     function fit(tile) {
+      if (tile.kind === 'neko') {
+        placeNeko(tile);
+        return;
+      }
       tile.screen.style.width = '100%';
       tile.screen.style.height = '100%';
       tile.screen.style.aspectRatio = 'auto';
@@ -169,6 +186,10 @@ export function dashboardPage(): string {
     }
 
     function clearFit(tile) {
+      tile.screen.style.position = '';
+      tile.screen.style.zIndex = '';
+      tile.screen.style.top = '';
+      tile.screen.style.left = '';
       tile.screen.style.width = '';
       tile.screen.style.height = '';
       tile.screen.style.aspectRatio = '';
@@ -183,8 +204,12 @@ export function dashboardPage(): string {
       stage.classList.add('open');
       stageTitle.textContent = tile.name.textContent || id;
       note('');
-      stageScreen.append(tile.screen);
-      fit(tile);
+      if (tile.kind === 'neko') {
+        requestAnimationFrame(() => fit(tile));
+      } else {
+        stageScreen.append(tile.screen);
+        fit(tile);
+      }
       loadChat(id);
     }
 
@@ -195,7 +220,7 @@ export function dashboardPage(): string {
       stageId = null;
       if (tile) {
         clearFit(tile);
-        tile.article.insertBefore(tile.screen, tile.article.firstChild);
+        if (tile.kind !== 'neko') tile.article.insertBefore(tile.screen, tile.article.firstChild);
         if (tile.rfb) requestAnimationFrame(() => { tile.rfb.scaleViewport = true; });
       }
       stageScreen.replaceChildren();
