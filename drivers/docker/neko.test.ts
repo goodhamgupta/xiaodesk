@@ -25,6 +25,8 @@ describe('neko container args', () => {
     expect(args).toContain('NEKO_WEBRTC_EPR=53200-53208');
     expect(args).toContain('/workspace:/workspace');
     expect(args).toContain('/usr/local/bin/node:/usr/local/bin/node:ro');
+    expect(args).toContain('/opt/openclaw:/opt/openclaw:ro');
+    expect(args).toContain('OPENCLAW_NODE_NAME=neko-ccarenvabc');
     expect(args[args.length - 1]).toBe('workshop-neko:desk');
     expect(nekoContainerName('ccarenv_0123456789abcdef')).toMatch(/^neko-[a-z0-9_.-]+$/);
     expect(nekoContainerName('ccarenv_0123456789abcdef')).not.toBe('workshop-neko');

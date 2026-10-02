@@ -238,6 +238,8 @@ export function dashboardPage(): string {
     }
 
     const deskLog = document.getElementById('desk-log');
+    let deskShown = 0;
+    let deskSending = false;
     const deskForm = document.getElementById('desk-form');
     const deskInput = document.getElementById('desk-input');
     const deskSend = document.getElementById('desk-send');
@@ -267,7 +269,7 @@ export function dashboardPage(): string {
       const hint = document.getElementById('desk-hint');
       if (hint) {
         hint.textContent = display && display.kind === 'neko'
-          ? 'This turn drives the neko desktop. Codex is not in this loop unless /api/codex says the binary and a key are present.'
+          ? 'This neko desktop is an OpenClaw node. tell main ... posts here, and the main desk can run on <node> ....'
           : 'Chrome, a terminal, and the file browser. The message is typed on this screen.';
       }
       deskLog.replaceChildren();
@@ -275,11 +277,29 @@ export function dashboardPage(): string {
         const res = await fetch(chatUrl(id));
         if (!res.ok) return;
         const data = await res.json();
-        for (const message of data.messages || []) addBubble(message.role, message.text, message.file);
+        const messages = data.messages || [];
+        for (const message of messages) addBubble(message.role, message.text, message.file);
+        deskShown = messages.length;
       } catch (err) {
         addBubble('error', err.message);
       }
     }
+
+    setInterval(async () => {
+      if (!stageId || deskSending) return;
+      const display = latest.find((item) => item.guest_id === stageId);
+      if (!display || display.kind !== 'neko') return;
+      try {
+        const res = await fetch(chatUrl(stageId));
+        if (!res.ok) return;
+        const data = await res.json();
+        const messages = data.messages || [];
+        if (messages.length === deskShown) return;
+        deskLog.replaceChildren();
+        for (const message of messages) addBubble(message.role, message.text, message.file);
+        deskShown = messages.length;
+      } catch (err) { /* the next poll retries */ }
+    }, 2000);
 
     function takeEvents(buf) {
       const events = [];
@@ -310,6 +330,8 @@ export function dashboardPage(): string {
       if (!message) return;
       deskInput.value = '';
       addBubble('user', message);
+      deskShown += 1;
+      deskSending = true;
       deskSend.disabled = true;
       try {
         const res = await fetch(chatUrl(stageId), {
@@ -340,6 +362,7 @@ export function dashboardPage(): string {
       } catch (err) {
         addBubble('error', err.message);
       } finally {
+        deskSending = false;
         deskSend.disabled = false;
         deskInput.focus();
       }

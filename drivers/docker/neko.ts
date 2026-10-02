@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import type { AgentSession } from '../../packages/agents-api/src/types.js';
 import { DedupedCompute } from '../../packages/agents-api/src/dedup.js';
@@ -44,6 +45,8 @@ export function nekoRunArgs(spec: NekoRunSpec): string[] {
     '--shm-size', '2g',
     '-v', `${spec.repoRoot}:/workspace`,
     '-v', `${spec.nodePath}:/usr/local/bin/node:ro`,
+    '-v', '/opt/openclaw:/opt/openclaw:ro',
+    '-e', `OPENCLAW_NODE_NAME=${spec.name}`,
     '-e', `DISPLAY=${spec.display}`,
     '-e', `NEKO_SERVER_BIND=${spec.bind}`,
     '-e', 'NEKO_DESKTOP_SCREEN=1280x800@30',
@@ -168,6 +171,7 @@ export class NekoBackend {
       this.hooks.onDisplay?.({ guestId, jobName: job?.name, nekoUrl, container: name });
       await this.startExecutor(docker, name, session, executorKey, display);
       await this.waitForRegistered(docker, name, 45_000);
+      await this.startOpenClaw(docker, name, display);
     } catch (error) {
       await this.stop(id);
       throw error;
@@ -213,6 +217,21 @@ export class NekoBackend {
     ]);
     if (started.code !== 0) {
       throw new Error(`failed to start codex exec-server: ${started.stderr || started.stdout}`);
+    }
+  }
+
+  private async startOpenClaw(docker: string[], name: string, display: string): Promise<void> {
+    if (!existsSync('/opt/openclaw/bin/openclaw')) return;
+    const started = await this.dockerRun(docker, [
+      'exec', '-d',
+      '-u', 'root',
+      '-e', `OPENCLAW_NODE_NAME=${name}`,
+      '-e', `DISPLAY=${display}`,
+      name,
+      'bash', '/workspace/scripts/neko/openclaw-node.sh',
+    ]);
+    if (started.code !== 0) {
+      console.log(`openclaw node ${name} did not start: ${started.stderr || started.stdout}`);
     }
   }
 

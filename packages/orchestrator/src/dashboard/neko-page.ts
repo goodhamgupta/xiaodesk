@@ -42,7 +42,7 @@ export function nekoPage(nekoUrl: string): string {
   <header>
     <div>
       <h1>Neko desk</h1>
-      <p>The desktop is the neko stream with its own dock (browser, terminal, files), Take over / Release control, and the reaction row. The chat runs those same actions, including <code>react with thumbs up</code>. Sign-in is neko / neko. The QEMU wall is at <a href="/vms">/vms</a>.</p>
+      <p>The desktop is the neko stream with its own dock (browser, terminal, files), Take over / Release control, and the reaction row. This chat is the main OpenClaw desk: <code>nodes</code>, <code>on workshop-neko open the terminal</code>, and <code>state of workshop-neko</code>. A VM posts back with <code>tell main ...</code> or <code>desk-tell</code> inside the container. Sign-in is neko / neko. The QEMU wall is at <a href="/vms">/vms</a>.</p>
     </div>
   </header>
   <div class="stage">
@@ -50,7 +50,7 @@ export function nekoPage(nekoUrl: string): string {
     <aside class="desk">
       <div class="desk-head">
         <strong>Desk bot</strong>
-        <span>Computer use and browser use on this container.</span>
+        <span id="desk-hint">Main chat. OpenClaw nodes run the other desktops. No model key means the planner stays local.</span>
       </div>
       <div class="desk-log" id="desk-log"></div>
       <form id="desk-form">
@@ -64,6 +64,8 @@ export function nekoPage(nekoUrl: string): string {
     const deskForm = document.getElementById('desk-form');
     const deskInput = document.getElementById('desk-input');
     const deskSend = document.getElementById('desk-send');
+    let shown = 0;
+    let sending = false;
 
     function addBubble(role, text, file) {
       const node = document.createElement('div');
@@ -79,14 +81,19 @@ export function nekoPage(nekoUrl: string): string {
       deskLog.scrollTop = deskLog.scrollHeight;
     }
 
-    async function loadChat() {
+    async function syncChat() {
+      if (sending) return;
       try {
         const res = await fetch('/api/neko/chat');
         if (!res.ok) return;
         const data = await res.json();
-        for (const message of data.messages || []) addBubble(message.role, message.text, message.file);
+        const messages = data.messages || [];
+        if (messages.length === shown) return;
+        deskLog.replaceChildren();
+        for (const message of messages) addBubble(message.role, message.text, message.file);
+        shown = messages.length;
       } catch (err) {
-        addBubble('error', err.message);
+        if (!shown) addBubble('error', err.message);
       }
     }
 
@@ -118,6 +125,8 @@ export function nekoPage(nekoUrl: string): string {
       if (!message) return;
       deskInput.value = '';
       addBubble('user', message);
+      shown += 1;
+      sending = true;
       deskSend.disabled = true;
       try {
         const res = await fetch('/api/neko/chat', {
@@ -143,17 +152,21 @@ export function nekoPage(nekoUrl: string): string {
             else if (payload.type === 'action') addBubble('action', payload.text);
             else if (payload.type === 'error') addBubble('error', payload.text);
             else if (payload.type === 'shot') addBubble('action', payload.text || 'Screen', payload.file);
+            if (payload.type === 'assistant' || payload.type === 'action' || payload.type === 'error' || payload.type === 'shot') shown += 1;
           }
         }
       } catch (err) {
         addBubble('error', err.message);
       } finally {
+        sending = false;
         deskSend.disabled = false;
         deskInput.focus();
+        syncChat();
       }
     });
 
-    loadChat();
+    syncChat();
+    setInterval(syncChat, 2000);
   </script>
 </body>
 </html>`;

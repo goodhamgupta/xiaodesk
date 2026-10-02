@@ -13,7 +13,10 @@ import { nekoPage } from './neko-page.js';
 import { listSnapshots, loadVm, saveVm } from '../vm/qmp.js';
 import { startVncRecording, type RecordingHandle } from '../vm/vnc-record.js';
 import { runDeskChat, type DeskEvent } from '../computer/desk.js';
-import { runNekoChat, runNekoDock } from '../computer/neko.js';
+import { planFleet } from '../computer/fleet.js';
+import { runNekoChat, runNekoDock, sendNekoEmote } from '../computer/neko.js';
+import { gatewayUp, listNodes, nodeState, postDeskHook, runDeskTool } from '../computer/openclaw.js';
+import { planDesk } from '../computer/plan.js';
 
 export interface DashboardOptions {
   recordingsDir?: string;
@@ -51,6 +54,8 @@ export class DashboardServer {
   private chats = new Map<string, ChatLine[]>();
   private deskBusy = new Set<string>();
   private nekoTargets = new Map<string, { container: string; wsUrl: string }>();
+  private inboxLines = 0;
+  private inboxTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private port: number = 4200,
@@ -90,6 +95,13 @@ export class DashboardServer {
         password: 'neko',
         admin_password: 'admin',
       });
+    });
+
+    this.app.get('/api/openclaw', (_req, res) => {
+      this.openClawStatus().then(
+        (body) => res.json(body),
+        (error) => fail(res, error),
+      );
     });
 
     this.app.get('/api/codex', (_req, res) => {
@@ -261,6 +273,7 @@ export class DashboardServer {
     this.server.listen(this.port, '0.0.0.0', () => {
       console.log(`Dashboard server running at http://localhost:${this.port}`);
     });
+    this.inboxTimer = setInterval(() => this.pollInbox(), 1000);
   }
 
   registerDisplay(info: { guestId: string; vncPort?: number; vncPassword?: string; jobName?: string; status?: string; kind?: 'vnc' | 'neko'; nekoUrl?: string; container?: string }): void {
@@ -290,6 +303,8 @@ export class DashboardServer {
   }
 
   stop(): void {
+    if (this.inboxTimer) clearInterval(this.inboxTimer);
+    this.inboxTimer = null;
     for (const client of this.clients) {
       client.close();
     }
@@ -470,6 +485,99 @@ export class DashboardServer {
     this.chats.set(guestId, rows.slice(-80));
   }
 
+  private async openClawStatus(): Promise<{ gateway: boolean; model: boolean; nodes: string }> {
+    const up = await gatewayUp();
+    if (!up) return { gateway: false, model: Boolean(process.env.OPENAI_API_KEY), nodes: 'gateway down' };
+    try {
+      const listed = await listNodes({ repoRoot: this.repoRoot() });
+      return { gateway: true, model: Boolean(process.env.OPENAI_API_KEY), nodes: listed.text };
+    } catch (error) {
+      return { gateway: true, model: Boolean(process.env.OPENAI_API_KEY), nodes: error instanceof Error ? error.message : 'nodes unavailable' };
+    }
+  }
+
+  private pollInbox(): void {
+    const file = join(this.repoRoot(), 'runs/openclaw/inbox.jsonl');
+    let raw = '';
+    try {
+      raw = readFileSync(file, 'utf8');
+    } catch {
+      return;
+    }
+    const lines = raw.split('\n').filter(Boolean);
+    let seen = this.inboxLines;
+    for (const line of lines.slice(this.inboxLines)) {
+      try {
+        const row = JSON.parse(line) as { from?: string; text?: string };
+        if (row.text) this.remember('neko', { role: 'assistant', text: `From ${row.from || 'vm'}: ${row.text}` });
+        seen += 1;
+      } catch {
+        break;
+      }
+    }
+    this.inboxLines = seen;
+  }
+
+  private wsForContainer(container: string): string | undefined {
+    if (!container || container === (process.env.NEKO_NAME || 'workshop-neko')) {
+      return process.env.NEKO_WS || 'ws://127.0.0.1:8341/ws?password=neko&username=codex';
+    }
+    for (const target of this.nekoTargets.values()) {
+      if (target.container === container) return target.wsUrl;
+    }
+    return undefined;
+  }
+
+  private async *runFleet(fleet: ReturnType<typeof planFleet>, container: string, wsUrl?: string): AsyncGenerator<DeskEvent> {
+    const paths = { repoRoot: this.repoRoot() };
+    if (!(await gatewayUp())) {
+      yield { type: 'error', text: 'OpenClaw gateway is not up. Run scripts/openclaw-up.sh on the host.' };
+      yield { type: 'done' };
+      return;
+    }
+    if (fleet.kind === 'tell') {
+      const text = fleet.text || 'ping';
+      await postDeskHook(paths, container, text);
+      yield { type: 'assistant', text: `Sent to the main chat from ${container}.` };
+      yield { type: 'done' };
+      return;
+    }
+    if (fleet.kind === 'nodes') {
+      const listed = await listNodes(paths);
+      yield { type: 'assistant', text: listed.text };
+      yield { type: 'done' };
+      return;
+    }
+    const node = fleet.node || container;
+    if (fleet.kind === 'state') {
+      yield { type: 'assistant', text: await nodeState(paths, node) };
+      yield { type: 'done' };
+      return;
+    }
+    const plan = planDesk(fleet.text, {
+      home: '/home/neko',
+      fixturesUrl: process.env.NEKO_FIXTURES_URL || 'http://127.0.0.1:4317',
+    });
+    if (!plan.actions.length) {
+      yield { type: 'assistant', text: plan.say };
+      yield { type: 'done' };
+      return;
+    }
+    yield { type: 'assistant', text: `${node}: ${plan.say}` };
+    for (const action of plan.actions) {
+      if (action.op === 'react' && action.emote) {
+        const socket = wsUrl && node === container ? wsUrl : this.wsForContainer(node);
+        if (!socket) throw new Error(`${node} has no neko reaction socket`);
+        await sendNekoEmote(action.emote, socket);
+        yield { type: 'action', op: 'react', text: `reaction ${action.emote} on ${node}` };
+        continue;
+      }
+      const detail = await runDeskTool(paths, node, { ...action });
+      yield { type: 'action', op: action.op, text: detail };
+    }
+    yield { type: 'done' };
+  }
+
   private nekoContainer(requested: string): string {
     if (!requested) return process.env.NEKO_NAME || 'workshop-neko';
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(requested)) {
@@ -513,14 +621,19 @@ export class DashboardServer {
       }
     };
     try {
-      for await (const event of runNekoChat({
-        message: text,
-        repoRoot: root,
-        shotsDir: join(root, 'runs/desk-shots'),
-        container: target.container,
-        wsUrl: target.wsUrl,
-      })) {
-        send(event);
+      const fleet = planFleet(text);
+      if (fleet.kind !== 'desk') {
+        for await (const event of this.runFleet(fleet, target.container, target.wsUrl)) send(event);
+      } else {
+        for await (const event of runNekoChat({
+          message: text,
+          repoRoot: root,
+          shotsDir: join(root, 'runs/desk-shots'),
+          container: target.container,
+          wsUrl: target.wsUrl,
+        })) {
+          send(event);
+        }
       }
     } catch (error) {
       send({ type: 'error', text: error instanceof Error ? error.message : String(error) });

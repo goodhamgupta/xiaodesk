@@ -26,10 +26,15 @@ docker_cmd() {
 if docker_cmd ps -a --format '{{.Names}}' | grep -qx "$name"; then
   docker_cmd start "$name" >/dev/null
 else
+  openclaw_args=()
+  if [[ -x /opt/openclaw/bin/openclaw ]]; then
+    openclaw_args=(-v /opt/openclaw:/opt/openclaw:ro -e "OPENCLAW_NODE_NAME=${name}")
+  fi
   docker_cmd run -d \
     --name "$name" \
     --network host \
     --shm-size 2g \
+    "${openclaw_args[@]}" \
     -e "NEKO_SERVER_BIND=${bind}" \
     -e NEKO_DESKTOP_SCREEN=1280x800@30 \
     -e NEKO_MEMBER_MULTIUSER_USER_PASSWORD=neko \
@@ -57,4 +62,7 @@ if [[ "${nat_ip}" == "127.0.0.1" ]] && ! ss -uln | grep -q '127.0.0.1:52100'; th
 fi
 
 bash "${ROOT}/scripts/neko/install-ui.sh"
+if [[ -x /opt/openclaw/bin/openclaw ]]; then
+  bash "${ROOT}/scripts/openclaw-up.sh" --container "$name"
+fi
 echo "neko ${name} -> http://${bind}  user/neko  admin/admin"
