@@ -14,6 +14,10 @@ fi
 if ! su -s /bin/bash neko -c 'pgrep -u neko -f "cua-driver serve" >/dev/null'; then
   su -s /bin/bash neko -c 'export DISPLAY="${DISPLAY:-:99.0}" HOME=/home/neko XDG_RUNTIME_DIR=/tmp/runtime-neko; mkdir -p "$XDG_RUNTIME_DIR"; nohup "$HOME/.local/bin/cua-driver" serve >>/tmp/cua-driver.log 2>&1 &'
 fi
+if [[ -x /usr/bin/xfconf-query ]]; then
+  su -s /bin/bash neko -c 'export DISPLAY="${DISPLAY:-:99.0}"; export XFCE_DOCK_RESTART=0; bash /workspace/scripts/neko/xfce-dock.sh' \
+    || echo "xfce dock autohide skipped"
+fi
 if [[ -x /opt/openclaw/bin/openclaw && -f /workspace/scripts/neko/openclaw-node.sh ]]; then
   bash /workspace/scripts/neko/openclaw-node.sh >>/tmp/openclaw-node-setup.log 2>&1 &
 fi

@@ -19,17 +19,7 @@ export function dashboardPage(): string {
     .tile { background: #0c1220; border: 1px solid #243049; border-radius: 14px; overflow: hidden; outline: none; }
     .tile:focus-visible { border-color: #7aa2ff; }
     .screen { position: relative; aspect-ratio: 16 / 10; background: #000; overflow: hidden; }
-    .screen canvas { display: block; cursor: default !important; position: relative; z-index: 1; }
-    .dock { position: absolute; z-index: 8; left: 50%; bottom: 8px; transform: translateX(-50%); display: flex; align-items: stretch; gap: 2px; padding: 6px 8px 5px; background: rgba(255, 255, 255, 0.96); border-radius: 18px; box-shadow: 0 12px 32px rgba(20, 24, 40, 0.28); }
-    .dock button { width: auto; min-width: 72px; height: auto; margin: 0; padding: 4px 8px 3px; border: 0; border-radius: 12px; background: transparent; color: #1c2030; display: flex; flex-direction: column; align-items: center; gap: 3px; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; font-weight: 650; line-height: 1.1; letter-spacing: 0; }
-    .dock button svg { width: 28px; height: 28px; display: block; }
-    .dock button i { width: 5px; height: 5px; border-radius: 99px; background: transparent; display: block; }
-    .dock button.open i { background: #1c2030; }
-    .dock button:hover { background: rgba(20, 24, 40, 0.06); }
-    #stage-screen .dock { bottom: 18px; gap: 6px; padding: 10px 12px 8px; border-radius: 22px; }
-    #stage-screen .dock button { min-width: 92px; padding: 6px 12px 4px; font-size: 13px; gap: 5px; border-radius: 14px; }
-    #stage-screen .dock button svg { width: 40px; height: 40px; }
-    #stage-screen .dock button i { width: 6px; height: 6px; }
+    .screen canvas { display: block; cursor: default !important; }
     .screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
     .meta { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; padding: 0.7rem 0.85rem; cursor: zoom-in; }
     .meta strong { display: block; }
@@ -81,7 +71,7 @@ export function dashboardPage(): string {
   <header>
     <div>
       <h1>VM screens</h1>
-      <p>The first tile is the neko desktop. Every screen keeps the browser, files, and terminal dock along the bottom. Click the picture for the pointer, or press Chat to open that screen with the desk chat. <span id="codex-status">Checking Codex…</span></p>
+      <p>The first tile is the neko XFCE desktop. Its launcher dock hides until the pointer hits the screen edge. The other tiles are QEMU guests: click the picture for the pointer, or press Chat to open that screen with the desk chat. <span id="codex-status">Checking Codex…</span></p>
     </div>
     <div id="connection" class="connection">Connecting</div>
   </header>
@@ -138,78 +128,6 @@ export function dashboardPage(): string {
       return proto + '//' + location.host + '/vm/' + encodeURIComponent(id) + '/vnc';
     }
 
-    function dockSvg(op) {
-      if (op === 'browser') return '<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1a73e8"/><circle cx="18" cy="18" r="6.5" fill="#fff"/><path d="M18 2a16 16 0 0 1 13.8 8H18z" fill="#ea4335"/><path d="M31.8 10A16 16 0 0 1 18 34V18h13.8z" fill="#fbbc04"/><path d="M18 34A16 16 0 0 1 4.2 10H18z" fill="#34a853"/></svg>';
-      if (op === 'terminal') return '<svg viewBox="0 0 36 36" aria-hidden="true"><rect x="2" y="4" width="32" height="28" rx="8" fill="#4b5168"/><path d="M10 13l6 5-6 5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 23h8" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>';
-      return '<svg viewBox="0 0 36 36" aria-hidden="true"><path d="M4 12.5V10a4 4 0 0 1 4-4h6l2.2 2.6H28a4 4 0 0 1 4 4v1.9" fill="#8eb6f5"/><rect x="3" y="12" width="30" height="18" rx="4" fill="#4c8dff"/></svg>';
-    }
-
-    function addDock(screen, display) {
-      const dock = document.createElement('div');
-      dock.className = 'dock';
-      dock.setAttribute('role', 'toolbar');
-      dock.setAttribute('aria-label', 'Apps');
-      const stop = (event) => event.stopPropagation();
-      dock.addEventListener('pointerdown', stop);
-      dock.addEventListener('mousedown', stop);
-      dock.addEventListener('mouseup', stop);
-      const job = String(display.job_name || '').toLowerCase();
-      const browserUp = /chrome|signup|ticket|book|onboarding|support|venue/.test(job);
-      [['browser', 'Browser'], ['files', 'Files'], ['terminal', 'Terminal']].forEach((item) => {
-        const op = item[0];
-        const title = item[1];
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.title = 'Open ' + title;
-        button.setAttribute('aria-label', title);
-        if (op === 'browser' && browserUp) button.classList.add('open');
-        button.innerHTML = dockSvg(op) + '<span>' + title + '</span><i></i>';
-        button.addEventListener('click', (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          button.disabled = true;
-          fetch('/api/vms/' + encodeURIComponent(display.guest_id) + '/dock', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ op: op }),
-          }).then((res) => {
-            if (!res.ok) button.title = 'Could not open ' + title;
-            else {
-              button.classList.add('open');
-              button.title = title + ' is open';
-            }
-          }).catch(() => {
-            button.title = 'Could not open ' + title;
-          }).finally(() => {
-            button.disabled = false;
-          });
-        });
-        dock.append(button);
-      });
-      screen.append(dock);
-      seats.observe(screen);
-    }
-
-    function seatDock(screen) {
-      const dock = screen.querySelector('.dock');
-      if (!dock) return;
-      const canvas = screen.querySelector('canvas');
-      if (!canvas || canvas.clientHeight < 40) return;
-      const host = screen.getBoundingClientRect();
-      const box = canvas.getBoundingClientRect();
-      const inset = screen.parentElement && screen.parentElement.id === 'stage-screen' ? 16 : 8;
-      dock.style.left = (box.left - host.left + box.width / 2) + 'px';
-      dock.style.bottom = Math.max(6, host.bottom - box.bottom + inset) + 'px';
-    }
-
-    const seats = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const node = entry.target;
-        const screen = node.classList && node.classList.contains('screen') ? node : node.parentElement;
-        if (screen) seatDock(screen);
-      }
-    });
-
     function attach(el, display) {
       const rfb = new RFB(el, socketUrl(display.guest_id), { shared: true });
       rfb.viewOnly = false;
@@ -230,10 +148,7 @@ export function dashboardPage(): string {
       const tile = tiles.get(stageId);
       if (!tile) return;
       if (tile.kind === 'neko') placeNeko(tile);
-      else if (tile.rfb) {
-        tile.rfb.scaleViewport = true;
-        seatDock(tile.screen);
-      }
+      else if (tile.rfb) tile.rfb.scaleViewport = true;
     });
     stageObserver.observe(stageScreen);
 
@@ -625,12 +540,7 @@ export function dashboardPage(): string {
             waiting.remove();
           }
           const arm = (rfb) => {
-            rfb.addEventListener('connect', () => {
-              waiting.remove();
-              const canvas = screen.querySelector('canvas');
-              if (canvas) seats.observe(canvas);
-              seatDock(screen);
-            });
+            rfb.addEventListener('connect', () => waiting.remove());
             rfb.addEventListener('disconnect', () => {
               if (tile.closed || tile.rfb !== rfb) return;
               setTimeout(() => {
@@ -643,7 +553,6 @@ export function dashboardPage(): string {
             });
           };
           if (display.kind !== 'neko') {
-            addDock(screen, display);
             tile.rfb = attach(screen, display);
             arm(tile.rfb);
           }
