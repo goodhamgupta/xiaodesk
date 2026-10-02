@@ -105,12 +105,31 @@ async function typeText(id, text) {
   if (!typed.ok) throw new Error(typed.error || typed.stderr || 'xdotool type failed');
 }
 
+async function focusBig(klass, skipTitles = []) {
+  const ids = await windowIds(klass);
+  let id = '';
+  for (const candidate of ids) {
+    const title = await windowTitle(candidate);
+    if (!title || skipTitles.includes(title)) continue;
+    const box = await geometry(candidate);
+    if (box.width < 640 || box.height < 480) continue;
+    id = candidate;
+  }
+  if (!id) return '';
+  await exec('xdotool', ['windowmap', id]);
+  await exec('xdotool', ['windowraise', id]);
+  await exec('xdotool', ['windowactivate', '--sync', id]);
+  return id;
+}
+
 async function chrome(url) {
+  const target = url || 'about:blank';
+  const existing = await focusBig('deskchrome', ['chrome', 'Chromium clipboard']);
+  if (existing && target === 'about:blank') return { ok: true, detail: 'chrome focused' };
   const bin = chromeBin();
   if (!bin) return { ok: false, detail: 'chrome is not installed on this guest' };
   mkdirSync(join(home, '.config/desk-chrome'), { recursive: true });
-  const target = url || 'about:blank';
-  launch(bin, [
+  if (!existing) launch(bin, [
     '--no-sandbox',
     '--disable-dev-shm-usage',
     '--disable-gpu',

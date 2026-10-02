@@ -62,12 +62,12 @@
 
     var dock = document.createElement('div');
     dock.id = 'desk-dock';
-    [['browser', 'Browser', iconBrowser()], ['terminal', 'Terminal', iconTerminal()], ['files', 'Files', iconFiles()]].forEach(function (item) {
+    [['browser', 'Browser', iconBrowser()], ['files', 'Files', iconFiles()], ['terminal', 'Terminal', iconTerminal()]].forEach(function (item) {
       var button = document.createElement('button');
       button.type = 'button';
-      button.title = item[1];
+      button.title = 'Open ' + item[1];
       button.dataset.op = item[0];
-      button.innerHTML = item[2];
+      button.innerHTML = item[2] + '<span>' + item[1] + '</span><i></i>';
       button.addEventListener('click', function () { launch(button, item[0]); });
       dock.append(button);
     });
@@ -122,6 +122,8 @@
       body: JSON.stringify({ op: op, container: CONTAINER }),
     }).then(function (res) {
       if (!res.ok) throw new Error('dock failed');
+      button.classList.add('open');
+      button.title = button.querySelector('span').textContent + ' is open';
     }).catch(function () {
       button.title = 'Could not open ' + op;
     }).finally(function () {

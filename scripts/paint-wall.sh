@@ -66,6 +66,8 @@ for row in "${WANTED[@]}"; do
     continue
   fi
   echo "painting ${name}"
+  ssh_cmd "${port}" 'if ! command -v xterm >/dev/null 2>&1 || ! command -v pcmanfm >/dev/null 2>&1; then sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y xterm pcmanfm; fi' \
+    || echo "desk apps missing on ${name}" >&2
   stamp_task "${task_src}" "${task_json}"
   scp_to "${port}" "${ROOT}/scripts/guest/paint-desktop.mjs" "/tmp/paint-desktop.mjs"
   scp_to "${port}" "${task_json}" "/tmp/${name}.task.json"

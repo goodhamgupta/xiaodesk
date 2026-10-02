@@ -12,7 +12,7 @@ import { dashboardPage } from './page.js';
 import { nekoPage } from './neko-page.js';
 import { listSnapshots, loadVm, saveVm } from '../vm/qmp.js';
 import { startVncRecording, type RecordingHandle } from '../vm/vnc-record.js';
-import { runDeskChat, type DeskEvent } from '../computer/desk.js';
+import { runDeskChat, runGuestDock, type DeskEvent } from '../computer/desk.js';
 import { planFleet } from '../computer/fleet.js';
 import { runNekoChat, runNekoDock, sendNekoEmote } from '../computer/neko.js';
 import { gatewayUp, listNodes, nodeState, postDeskHook, runDeskTool } from '../computer/openclaw.js';
@@ -188,6 +188,77 @@ export class DashboardServer {
         return;
       }
       res.sendFile(file);
+    });
+
+    this.app.post('/api/vms/:id/dock', (req, res) => {
+      const op = String(req.body?.op || '');
+      const mapped = op === 'browser' ? 'chrome' : op;
+      if (mapped !== 'chrome' && mapped !== 'terminal' && mapped !== 'files') {
+        res.status(400).json({ error: 'op must be browser, terminal, or files' });
+        return;
+      }
+      let guestId = '';
+      try {
+        guestId = this.guestId(req.params.id);
+      } catch (error) {
+        fail(res, error);
+        return;
+      }
+      const display = this.displays.get(guestId);
+      if (!display) {
+        res.status(404).json({ error: 'guest display is not registered' });
+        return;
+      }
+      if (display.kind === 'neko') {
+        if (this.deskBusy.has(guestId)) {
+          res.status(409).json({ error: 'this desktop is already working on a message' });
+          return;
+        }
+        this.deskBusy.add(guestId);
+        const container = this.nekoTargets.get(guestId)?.container || guestId;
+        runNekoDock(this.repoRoot(), mapped, container).then(
+          (result) => {
+            this.deskBusy.delete(guestId);
+            if (!result.ok) res.status(502).json({ error: result.detail });
+            else res.json(result);
+          },
+          (error) => {
+            this.deskBusy.delete(guestId);
+            fail(res, error);
+          },
+        );
+        return;
+      }
+      if (this.deskBusy.has(guestId)) {
+        res.status(409).json({ error: 'this desktop is already working on a message' });
+        return;
+      }
+      let link: { sshPort: number };
+      try {
+        link = this.guestLink(guestId);
+      } catch (error) {
+        fail(res, error);
+        return;
+      }
+      const root = this.repoRoot();
+      this.deskBusy.add(guestId);
+      runGuestDock({
+        guestId,
+        sshPort: link.sshPort,
+        keyPath: join(root, 'images/guest_ed25519'),
+        repoRoot: root,
+        op: mapped,
+      }).then(
+        (result) => {
+          this.deskBusy.delete(guestId);
+          if (!result.ok) res.status(502).json({ error: result.detail });
+          else res.json(result);
+        },
+        (error) => {
+          this.deskBusy.delete(guestId);
+          fail(res, error);
+        },
+      );
     });
 
     this.app.post('/api/vms/:id/record/start', (req, res) => {

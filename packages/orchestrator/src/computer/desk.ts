@@ -75,8 +75,9 @@ async function ensureGuest(port: number, keyPath: string, repoRoot: string, gues
     'sudo -n cp /tmp/desk-chrome.sh /usr/local/bin/desk-chrome',
     'sudo -n chmod 755 /usr/local/bin/desk-chrome',
     'mkdir -p "$HOME/Desktop" "$HOME/Downloads" "$HOME/.config/desk-chrome" "$HOME/.config/pcmanfm/default"',
+    'if ! command -v xterm >/dev/null 2>&1 || ! command -v pcmanfm >/dev/null 2>&1; then sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y xterm pcmanfm; fi',
     'DISPLAY=:0 openbox --reconfigure || true',
-  ].join(' && ')), 20000);
+  ].join(' && ')), 180000);
   if (setup.code !== 0) throw new Error(setup.stderr.trim() || 'desk setup failed');
   ready.add(guestId);
 }
@@ -94,6 +95,22 @@ async function guestAction(port: number, keyPath: string, action: DeskAction | {
   } catch {
     return { ok: false, detail: line.slice(0, 400) };
   }
+}
+
+export async function runGuestDock(options: {
+  guestId: string;
+  sshPort: number;
+  keyPath: string;
+  repoRoot: string;
+  op: 'chrome' | 'terminal' | 'files';
+}): Promise<{ ok: boolean; detail: string }> {
+  await ensureGuest(options.sshPort, options.keyPath, options.repoRoot, options.guestId);
+  const action: DeskAction = options.op === 'chrome'
+    ? { op: 'chrome', url: 'about:blank' }
+    : options.op === 'terminal'
+      ? { op: 'terminal' }
+      : { op: 'files', path: '/home/lume' };
+  return guestAction(options.sshPort, options.keyPath, action);
 }
 
 export async function* runDeskChat(options: {
