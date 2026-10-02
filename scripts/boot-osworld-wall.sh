@@ -270,6 +270,10 @@ for index in "${!CHOSEN[@]}"; do
     scp_to "$((24841 + index))" "${ROOT}/scripts/guest/pin-openbox-desktop.py" "/tmp/pin-openbox-desktop.py"
     ssh_cmd "$((24841 + index))" "sudo DISPLAY=:0 python3 /tmp/pin-openbox-desktop.py && DISPLAY=:0 openbox --reconfigure" \
       || echo "openbox pin failed on ${name}"
+    # Paint before the solver. An empty Openbox root is the blank tile on /vms.
+    if ! "${ROOT}/scripts/paint-wall.sh" "${name}"; then
+      echo "paint failed on ${name}" >&2
+    fi
     # Chrome guests fight each other for TCG time if they all launch together.
     if [[ "${KINDS[$index]}" == "browser" || "${KINDS[$index]}" == "workflow" ]]; then
       sleep 20

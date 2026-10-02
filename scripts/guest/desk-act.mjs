@@ -54,8 +54,15 @@ async function windowTitle(id) {
   return name.stdout.trim();
 }
 
+async function geometry(id) {
+  const geo = await exec('xdotool', ['getwindowgeometry', '--shell', id]);
+  const width = Number((geo.stdout.match(/^WIDTH=(\d+)/m) || [])[1] || 0);
+  const height = Number((geo.stdout.match(/^HEIGHT=(\d+)/m) || [])[1] || 0);
+  return { width, height };
+}
+
 async function place(klass, resize, skipTitles = []) {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const ids = await windowIds(klass);
     let id = '';
     for (const candidate of ids) {
@@ -71,8 +78,11 @@ async function place(klass, resize, skipTitles = []) {
       await exec('xdotool', ['windowmap', id]);
       await exec('xdotool', ['windowraise', id]);
       await exec('xdotool', ['windowactivate', '--sync', id]);
-      await sleep(resize ? 200 : 500);
-      return id;
+      const box = await geometry(id);
+      if (!resize || (box.width >= 640 && box.height >= 480)) {
+        await sleep(resize ? 200 : 500);
+        return id;
+      }
     }
     await sleep(300);
   }

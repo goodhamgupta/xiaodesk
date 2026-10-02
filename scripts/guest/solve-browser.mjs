@@ -242,8 +242,25 @@ async function runBooking(cdp) {
   }
 }
 
+function stopPreviousSolverChrome() {
+  try {
+    const pid = Number(readFileSync('/tmp/chrome.pid', 'utf8').trim());
+    if (pid > 1) {
+      try {
+        process.kill(-pid, 'SIGTERM');
+      } catch {
+        process.kill(pid, 'SIGTERM');
+      }
+    }
+  } catch {
+    // First run has no solver chrome to replace.
+  }
+}
+
 async function main() {
   status('running');
+  stopPreviousSolverChrome();
+  await sleep(400);
   rmSync('/tmp/chrome-profile', { recursive: true, force: true });
   const bin = chromeBin();
   log(`chrome ${bin}`);
@@ -285,7 +302,7 @@ async function main() {
   } finally {
     clearInterval(placer);
     try { ws?.close(); } catch { /* already closed */ }
-    try { process.kill(-chrome.pid, 'SIGTERM'); } catch { /* chrome already left */ }
+    // Leave Chrome mapped. Closing it paints the VNC tile back to empty Openbox.
   }
 }
 
