@@ -57,6 +57,8 @@ Stream events you should key off:
 
 ## Shutdown
 
-`DELETE /v1/agents/sessions/:id` does not stop the VM and emits no deletion webhook. `LumeGuestDriver.stop` deletes the session, then stops compute as a second step.
+`DELETE /v1/agents/sessions/:id` does not stop the VM and emits no deletion webhook. `LumeGuestDriver.stop` and `DockerGuestDriver.stop` delete the session, then stop compute as a second step.
+
+`--driver docker` is the neko path. The control plane is the same server (`POST /v1/agents/sessions`, `environment.type: "self_hosted"`, webhook `environment_connection`). The worker runs one host-network neko container and starts `bin/codex exec-server --remote <remote_url> --environment-id <ccarenv_…>` inside it. The container's HTTP port, UDP mux, and TCP mux are allocated per environment so they do not take `8341` / `52100` from the long-running desk. `DELETE` leaves the container up. `stop` runs `docker rm -f`.
 
 `ENVIRONMENT_GRACE_MS` (default 0) is the optional idle grace period. A pending stop is cancelled when `requires_action` or `in_progress` arrives. Leave it at 0 unless you want reuse across turns. The demo stops the VM explicitly after evals.

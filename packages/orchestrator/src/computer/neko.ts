@@ -10,7 +10,7 @@ const DISPLAY = process.env.NEKO_DISPLAY || ':99.0';
 const HOME = '/home/neko';
 const FIXTURES = process.env.NEKO_FIXTURES_URL || 'http://127.0.0.1:4317';
 
-let scriptReady = false;
+const scriptReady = new Set<string>();
 
 function run(cmd: string, args: string[], timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
@@ -35,15 +35,15 @@ function dockerBin(): string {
   return process.env.DOCKER_BIN || 'docker';
 }
 
-async function ensureScript(repoRoot: string): Promise<void> {
-  if (scriptReady) return;
+async function ensureScript(repoRoot: string, container: string): Promise<void> {
+  if (scriptReady.has(container)) return;
   const src = join(repoRoot, 'scripts/neko/desk-act.py');
-  const copied = await run(dockerBin(), ['cp', src, `${CONTAINER}:/tmp/desk-act.py`], 20000);
+  const copied = await run(dockerBin(), ['cp', src, `${container}:/tmp/desk-act.py`], 20000);
   if (copied.code !== 0) throw new Error(copied.stderr.trim() || 'docker cp desk-act.py failed');
-  scriptReady = true;
+  scriptReady.add(container);
 }
 
-async function guestAction(action: DeskAction | { op: 'shot' }): Promise<{ ok: boolean; detail: string }> {
+async function guestAction(action: DeskAction | { op: 'shot' }, container: string): Promise<{ ok: boolean; detail: string }> {
   const payload = Buffer.from(JSON.stringify(action)).toString('base64');
   const result = await run(dockerBin(), [
     'exec',
@@ -52,7 +52,7 @@ async function guestAction(action: DeskAction | { op: 'shot' }): Promise<{ ok: b
     '-e', `HOME=${HOME}`,
     '-e', 'XDG_RUNTIME_DIR=/tmp/runtime-neko',
     '-e', 'MOZ_DISABLE_CONTENT_SANDBOX=1',
-    CONTAINER,
+    container,
     'python3', '/tmp/desk-act.py', payload,
   ], 40000);
   const line = result.stdout.trim().split('\n').filter(Boolean).pop() || '';
@@ -70,9 +70,9 @@ const REACTION_IDS = new Set([
   'celebrate', 'cool', 'happy', 'sad', 'rofl', 'hundred',
 ]);
 
-export function sendNekoEmote(emote: string): Promise<void> {
+export function sendNekoEmote(emote: string, wsUrl = process.env.NEKO_WS || 'ws://127.0.0.1:8341/ws?password=neko&username=codex'): Promise<void> {
   if (!REACTION_IDS.has(emote)) return Promise.reject(new Error(`unknown reaction ${emote}`));
-  const url = process.env.NEKO_WS || 'ws://127.0.0.1:8341/ws?password=neko&username=codex';
+  const url = wsUrl;
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url);
     let sent = false;
@@ -103,14 +103,14 @@ export function sendNekoEmote(emote: string): Promise<void> {
   });
 }
 
-export async function runNekoDock(repoRoot: string, op: 'chrome' | 'terminal' | 'files'): Promise<{ ok: boolean; detail: string }> {
-  await ensureScript(repoRoot);
+export async function runNekoDock(repoRoot: string, op: 'chrome' | 'terminal' | 'files', container = CONTAINER): Promise<{ ok: boolean; detail: string }> {
+  await ensureScript(repoRoot, container);
   const action: DeskAction = op === 'chrome'
     ? { op: 'chrome', url: 'about:blank' }
     : op === 'terminal'
       ? { op: 'terminal' }
       : { op: 'files', path: HOME };
-  return guestAction(action);
+  return guestAction(action, container);
 }
 
 export async function* runNekoChat(options: {
@@ -118,7 +118,10 @@ export async function* runNekoChat(options: {
   repoRoot: string;
   shotsDir: string;
   plan?: DeskPlan;
+  container?: string;
+  wsUrl?: string;
 }): AsyncGenerator<DeskEvent> {
+  const container = options.container || CONTAINER;
   const plan = options.plan ?? planDesk(options.message, { home: HOME, fixturesUrl: FIXTURES });
   yield { type: 'assistant', text: plan.say };
   if (!plan.actions.length) {
@@ -126,7 +129,7 @@ export async function* runNekoChat(options: {
     return;
   }
   try {
-    await ensureScript(options.repoRoot);
+    await ensureScript(options.repoRoot, container);
   } catch (error) {
     yield { type: 'error', text: error instanceof Error ? error.message : String(error) };
     yield { type: 'done' };
@@ -135,7 +138,7 @@ export async function* runNekoChat(options: {
   for (const action of plan.actions) {
     if (action.op === 'react') {
       try {
-        await sendNekoEmote(action.emote || '');
+        await sendNekoEmote(action.emote || '', options.wsUrl);
         yield { type: 'action', op: 'react', text: `reaction ${action.emote}` };
       } catch (error) {
         yield { type: 'error', text: error instanceof Error ? error.message : String(error) };
@@ -144,7 +147,7 @@ export async function* runNekoChat(options: {
       }
       continue;
     }
-    const result = await guestAction(action);
+    const result = await guestAction(action, container);
     if (!result.ok) {
       yield { type: 'error', text: result.detail };
       yield { type: 'done' };
@@ -152,11 +155,11 @@ export async function* runNekoChat(options: {
     }
     yield { type: 'action', op: action.op, text: result.detail };
   }
-  const shot = await guestAction({ op: 'shot' });
+  const shot = await guestAction({ op: 'shot' }, container);
   if (shot.ok) {
     mkdirSync(options.shotsDir, { recursive: true });
     const file = `neko__${Date.now()}.png`;
-    const fetched = await run(dockerBin(), ['cp', `${CONTAINER}:/tmp/desk-shot.png`, join(options.shotsDir, file)], 20000);
+    const fetched = await run(dockerBin(), ['cp', `${container}:/tmp/desk-shot.png`, join(options.shotsDir, file)], 20000);
     if (fetched.code === 0) yield { type: 'shot', file, text: 'Screen after the turn' };
   }
   yield { type: 'done' };

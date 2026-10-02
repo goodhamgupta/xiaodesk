@@ -1,6 +1,7 @@
 /* Replaces the neko header and bottom toolbar. Control and emotes go through the neko client. */
 (function () {
   var DASHBOARD = window.DESK_DASHBOARD || 'http://127.0.0.1:4318';
+  var CONTAINER = window.DESK_CONTAINER || '';
   var REACTIONS = [
     ['thumbs-up', '👍'],
     ['clap', '👏'],
@@ -118,7 +119,7 @@
     fetch(DASHBOARD + '/api/neko/dock', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ op: op }),
+      body: JSON.stringify({ op: op, container: CONTAINER }),
     }).then(function (res) {
       if (!res.ok) throw new Error('dock failed');
     }).catch(function () {

@@ -50,7 +50,7 @@ flowchart LR
 | `packages/agents-api` | Local Agents API: self-hosted sessions, signed webhooks, executor WebSocket. |
 | `drivers/lume` | Default guest. `lume` on Apple Silicon (Virtualization.framework). QEMU on Linux (KVM, or TCG when nested KVM cannot boot). |
 | `drivers/process` | Fast path: one Node process per job, stdio JSON-RPC. |
-| `drivers/docker` | Optional guest image skeleton (Debian, not Alpine). |
+| `drivers/docker` | Neko guest. One container per Agents API session. |
 | `drivers/microvm` | Alias of the lume/QEMU driver. |
 
 Production pattern: **one microVM per user**, and that VM contains Codex App Server. This fan-out lab runs **one guest per job** so a single machine can drain a queue of short browser tasks. See [docs/microvm.md](docs/microvm.md) and [docs/architecture.md](docs/architecture.md).

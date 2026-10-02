@@ -50,6 +50,7 @@ export class DashboardServer {
   private recording: RecordingHandle | null = null;
   private chats = new Map<string, ChatLine[]>();
   private deskBusy = new Set<string>();
+  private nekoTargets = new Map<string, { container: string; wsUrl: string }>();
 
   constructor(
     private port: number = 4200,
@@ -98,8 +99,10 @@ export class DashboardServer {
       );
     });
 
-    this.app.get('/api/neko/chat', (_req, res) => {
-      res.json({ messages: this.chats.get('neko') || [] });
+    this.app.get('/api/neko/chat', (req, res) => {
+      const guest = String(req.query.guest || '');
+      const key = !guest || guest === 'workshop-neko' ? 'neko' : guest;
+      res.json({ messages: this.chats.get(key) || [] });
     });
 
     this.app.post('/api/neko/dock', (req, res) => {
@@ -109,26 +112,33 @@ export class DashboardServer {
         res.status(400).json({ error: 'op must be browser, terminal, or files' });
         return;
       }
-      if (this.deskBusy.has('neko')) {
+      let container = process.env.NEKO_NAME || 'workshop-neko';
+      try {
+        container = this.nekoContainer(String(req.body?.container || ''));
+      } catch (error) {
+        fail(res, error);
+        return;
+      }
+      if (this.deskBusy.has(container)) {
         res.status(409).json({ error: 'this desktop is already working on a message' });
         return;
       }
-      this.deskBusy.add('neko');
-      runNekoDock(this.repoRoot(), mapped).then(
+      this.deskBusy.add(container);
+      runNekoDock(this.repoRoot(), mapped, container).then(
         (result) => {
-          this.deskBusy.delete('neko');
+          this.deskBusy.delete(container);
           if (!result.ok) res.status(502).json({ error: result.detail });
           else res.json(result);
         },
         (error) => {
-          this.deskBusy.delete('neko');
+          this.deskBusy.delete(container);
           fail(res, error);
         },
       );
     });
 
     this.app.post('/api/neko/chat', (req, res) => {
-      this.streamNekoChat(String(req.body?.message || ''), res).catch((error) => {
+      this.streamNekoChat(String(req.body?.message || ''), String(req.body?.guest_id || ''), res).catch((error) => {
         if (!res.headersSent) fail(res, error);
         else res.end();
       });
@@ -253,19 +263,29 @@ export class DashboardServer {
     });
   }
 
-  registerDisplay(info: { guestId: string; vncPort: number; vncPassword?: string; jobName?: string; status?: string }): void {
+  registerDisplay(info: { guestId: string; vncPort?: number; vncPassword?: string; jobName?: string; status?: string; kind?: 'vnc' | 'neko'; nekoUrl?: string; container?: string }): void {
     this.displays.set(info.guestId, {
       guest_id: info.guestId,
       job_name: info.jobName,
-      status: info.status || 'booting',
+      status: info.status || (info.kind === 'neko' ? 'webrtc — click the picture to control' : 'booting'),
       vnc_password: info.vncPassword,
-      vncPort: info.vncPort,
+      vncPort: info.vncPort ?? 0,
+      kind: info.kind || (info.nekoUrl ? 'neko' : 'vnc'),
+      neko_url: info.nekoUrl,
     });
+    if (info.container && info.nekoUrl) {
+      const host = new URL(info.nekoUrl).host;
+      this.nekoTargets.set(info.guestId, {
+        container: info.container,
+        wsUrl: `ws://${host}/ws?password=neko&username=codex`,
+      });
+    }
     this.push();
   }
 
   unregisterDisplay(guestId: string): void {
     this.displays.delete(guestId);
+    this.nekoTargets.delete(guestId);
     this.push();
   }
 
@@ -338,7 +358,8 @@ export class DashboardServer {
             job_name: display.job_name || guest?.job_name,
             status: guest?.status || display.status,
             vnc_password: display.vnc_password,
-            kind: 'vnc' as const,
+            kind: display.kind || 'vnc',
+            neko_url: display.neko_url,
           };
         }),
       ],
@@ -449,15 +470,34 @@ export class DashboardServer {
     this.chats.set(guestId, rows.slice(-80));
   }
 
-  private async streamNekoChat(message: string, res: Response): Promise<void> {
-    const guestId = 'neko';
+  private nekoContainer(requested: string): string {
+    if (!requested) return process.env.NEKO_NAME || 'workshop-neko';
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(requested)) {
+      throw Object.assign(new Error('invalid neko container'), { status: 400 });
+    }
+    return requested;
+  }
+
+  private nekoTarget(guestId: string): { container: string; wsUrl?: string; busyKey: string } {
+    if (!guestId || guestId === 'workshop-neko') {
+      const container = process.env.NEKO_NAME || 'workshop-neko';
+      return { container, busyKey: container };
+    }
+    const known = this.nekoTargets.get(guestId);
+    if (!known) throw Object.assign(new Error('neko display is not registered'), { status: 404 });
+    return { container: known.container, wsUrl: known.wsUrl, busyKey: known.container };
+  }
+
+  private async streamNekoChat(message: string, guestId: string, res: Response): Promise<void> {
+    const target = this.nekoTarget(guestId);
+    const chatKey = !guestId || guestId === 'workshop-neko' ? 'neko' : guestId;
     const text = message.trim();
     if (!text) throw Object.assign(new Error('message is empty'), { status: 400 });
     if (text.length > 4000) throw Object.assign(new Error('message is too long'), { status: 400 });
-    if (this.deskBusy.has(guestId)) throw Object.assign(new Error('this desktop is already working on a message'), { status: 409 });
+    if (this.deskBusy.has(target.busyKey)) throw Object.assign(new Error('this desktop is already working on a message'), { status: 409 });
     const root = this.repoRoot();
-    this.deskBusy.add(guestId);
-    this.remember(guestId, { role: 'user', text });
+    this.deskBusy.add(target.busyKey);
+    this.remember(chatKey, { role: 'user', text });
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -465,11 +505,11 @@ export class DashboardServer {
     const send = (event: DeskEvent) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
       if (event.type === 'assistant' || event.type === 'error') {
-        this.remember(guestId, { role: event.type, text: event.text || '' });
+        this.remember(chatKey, { role: event.type, text: event.text || '' });
       } else if (event.type === 'action') {
-        this.remember(guestId, { role: 'action', text: event.text || event.op || '' });
+        this.remember(chatKey, { role: 'action', text: event.text || event.op || '' });
       } else if (event.type === 'shot' && event.file) {
-        this.remember(guestId, { role: 'action', text: event.text || 'screen', file: event.file });
+        this.remember(chatKey, { role: 'action', text: event.text || 'screen', file: event.file });
       }
     };
     try {
@@ -477,6 +517,8 @@ export class DashboardServer {
         message: text,
         repoRoot: root,
         shotsDir: join(root, 'runs/desk-shots'),
+        container: target.container,
+        wsUrl: target.wsUrl,
       })) {
         send(event);
       }
@@ -484,7 +526,7 @@ export class DashboardServer {
       send({ type: 'error', text: error instanceof Error ? error.message : String(error) });
       send({ type: 'done' });
     } finally {
-      this.deskBusy.delete(guestId);
+      this.deskBusy.delete(target.busyKey);
       res.end();
     }
   }
@@ -606,7 +648,7 @@ export class DashboardServer {
 
   private bridgeVnc(guestId: string, req: IncomingMessage, socket: Duplex, head: Buffer): void {
     const display = this.displays.get(guestId);
-    if (!display || !this.wss) {
+    if (!display || !this.wss || display.kind === 'neko' || !display.vncPort) {
       socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;

@@ -104,7 +104,7 @@ async function main(): Promise<void> {
   const browserMode = (argValue('--browser') || 'chromium') as 'chromium' | 'lightpanda';
   const appServerMode = (argValue('--app-server') || 'mock') as 'mock' | 'real';
   const exitWhenDone = hasFlag('--exit');
-  const vm = driverName === 'lume' || driverName === 'microvm';
+  const vm = driverName === 'lume' || driverName === 'microvm' || driverName === 'docker';
 
   const config = createDefaultConfig({
     fixtures_url: `http://127.0.0.1:${FIXTURES_PORT}`,
@@ -137,7 +137,7 @@ async function main(): Promise<void> {
   const dashboard = hasFlag('--no-dashboard') ? null : new DashboardServer(DASHBOARD_PORT);
   dashboard?.start();
   const displayHooks = {
-    onDisplay: (info: { guestId: string; vncPort: number; vncPassword?: string; jobName?: string }) => {
+    onDisplay: (info: { guestId: string; vncPort?: number; vncPassword?: string; jobName?: string; nekoUrl?: string; container?: string }) => {
       dashboard?.registerDisplay(info);
     },
     onDisplayEnd: (guestId: string) => {
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
     },
   };
   const driver = driverName === 'docker'
-    ? new DockerGuestDriver()
+    ? new DockerGuestDriver({ browserMode, ...displayHooks })
     : driverName === 'microvm'
       ? new MicrovmGuestDriver({ browserMode, ...displayHooks })
       : driverName === 'lume'

@@ -258,7 +258,7 @@ export function dashboardPage(): string {
 
     function chatUrl(id) {
       const display = latest.find((item) => item.guest_id === id);
-      if (display && display.kind === 'neko') return '/api/neko/chat';
+      if (display && display.kind === 'neko') return '/api/neko/chat?guest=' + encodeURIComponent(id);
       return '/api/vms/' + encodeURIComponent(id) + '/chat';
     }
 
@@ -315,7 +315,7 @@ export function dashboardPage(): string {
         const res = await fetch(chatUrl(stageId), {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ message: message }),
+          body: JSON.stringify({ message: message, guest_id: stageId }),
         });
         if (!res.ok || !res.body) {
           const data = await res.json().catch(function () { return {}; });
