@@ -20,6 +20,7 @@ export function dashboardPage(): string {
     .tile:focus-visible { border-color: #7aa2ff; }
     .screen { position: relative; aspect-ratio: 16 / 10; background: #000; overflow: hidden; }
     .screen canvas { display: block; cursor: default !important; }
+    .screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
     .meta { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; padding: 0.7rem 0.85rem; cursor: zoom-in; }
     .meta strong { display: block; }
     .phase { color: #9eb0cc; font-size: 0.8rem; }
@@ -70,7 +71,7 @@ export function dashboardPage(): string {
   <header>
     <div>
       <h1>VM screens</h1>
-      <p>Each tile is that guest's framebuffer. Click a screen to move the pointer and type. Double-click the title, or press Chat, to open the desk. Send a message and the desktop opens Chrome, a terminal, or the file browser and types for you. Record writes an mp4 you can replay below. Snapshot and Restore use QEMU's savevm and loadvm.</p>
+      <p>The first tile is the neko desktop. Click it to move the pointer and type (sign in as neko / neko). The other tiles are QEMU guests: click the picture for the pointer, or press Chat to open that screen with the desk chat. <span id="codex-status">Checking Codex…</span></p>
     </div>
     <div id="connection" class="connection">Connecting</div>
   </header>
@@ -99,7 +100,7 @@ export function dashboardPage(): string {
       <aside class="desk" id="desk">
         <div class="desk-head">
           <strong>Desk</strong>
-          <span>Chrome, a terminal, and the file browser. The message is typed on this screen.</span>
+          <span id="desk-hint">Chrome, a terminal, and the file browser. The message is typed on this screen.</span>
         </div>
         <div id="desk-log" class="desk-log"></div>
         <form id="desk-form">
@@ -145,7 +146,7 @@ export function dashboardPage(): string {
     const stageObserver = new ResizeObserver(() => {
       if (!stageId) return;
       const tile = tiles.get(stageId);
-      if (tile) tile.rfb.scaleViewport = true;
+      if (tile && tile.rfb) tile.rfb.scaleViewport = true;
     });
     stageObserver.observe(stageScreen);
 
@@ -161,7 +162,7 @@ export function dashboardPage(): string {
       tile.screen.style.minHeight = '0';
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          tile.rfb.scaleViewport = true;
+          if (tile.rfb) tile.rfb.scaleViewport = true;
           tile.screen.querySelector('canvas')?.focus();
         });
       });
@@ -195,7 +196,7 @@ export function dashboardPage(): string {
       if (tile) {
         clearFit(tile);
         tile.article.insertBefore(tile.screen, tile.article.firstChild);
-        requestAnimationFrame(() => { tile.rfb.scaleViewport = true; });
+        if (tile.rfb) requestAnimationFrame(() => { tile.rfb.scaleViewport = true; });
       }
       stageScreen.replaceChildren();
     }
@@ -230,10 +231,23 @@ export function dashboardPage(): string {
       deskLog.scrollTop = deskLog.scrollHeight;
     }
 
+    function chatUrl(id) {
+      const display = latest.find((item) => item.guest_id === id);
+      if (display && display.kind === 'neko') return '/api/neko/chat';
+      return '/api/vms/' + encodeURIComponent(id) + '/chat';
+    }
+
     async function loadChat(id) {
+      const display = latest.find((item) => item.guest_id === id);
+      const hint = document.getElementById('desk-hint');
+      if (hint) {
+        hint.textContent = display && display.kind === 'neko'
+          ? 'This turn drives the neko desktop. Codex is not in this loop unless /api/codex says the binary and a key are present.'
+          : 'Chrome, a terminal, and the file browser. The message is typed on this screen.';
+      }
       deskLog.replaceChildren();
       try {
-        const res = await fetch('/api/vms/' + encodeURIComponent(id) + '/chat');
+        const res = await fetch(chatUrl(id));
         if (!res.ok) return;
         const data = await res.json();
         for (const message of data.messages || []) addBubble(message.role, message.text, message.file);
@@ -273,7 +287,7 @@ export function dashboardPage(): string {
       addBubble('user', message);
       deskSend.disabled = true;
       try {
-        const res = await fetch('/api/vms/' + encodeURIComponent(stageId) + '/chat', {
+        const res = await fetch(chatUrl(stageId), {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ message: message }),
@@ -413,7 +427,7 @@ export function dashboardPage(): string {
       latest = displays;
       const seen = new Set();
       if (displays.length === 0) {
-        for (const tile of tiles.values()) tile.rfb.disconnect();
+        for (const tile of tiles.values()) if (tile.rfb) tile.rfb.disconnect();
         tiles.clear();
         wall.replaceChildren();
         const empty = document.createElement('div');
@@ -446,7 +460,7 @@ export function dashboardPage(): string {
           titles.append(name, phase);
           const hint = document.createElement('div');
           hint.className = 'hint';
-          hint.textContent = 'Double-click title to open';
+          hint.textContent = display.kind === 'neko' ? 'Click the desktop to control it' : 'Double-click title to open';
           const chat = document.createElement('button');
           chat.type = 'button';
           chat.className = 'chat-btn';
@@ -467,8 +481,16 @@ export function dashboardPage(): string {
             if (event.key === 'Enter' && event.target === article) openStage(display.guest_id);
           });
           wall.append(article);
-          tile = { article, screen, name, phase, rfb: null, closed: false };
+          tile = { article, screen, name, phase, rfb: null, closed: false, kind: display.kind || 'vnc' };
           tiles.set(display.guest_id, tile);
+          if (display.kind === 'neko') {
+            const frame = document.createElement('iframe');
+            frame.src = display.neko_url;
+            frame.title = 'Neko desktop';
+            frame.allow = 'autoplay; fullscreen; clipboard-read; clipboard-write';
+            screen.append(frame);
+            waiting.remove();
+          }
           const arm = (rfb) => {
             rfb.addEventListener('connect', () => waiting.remove());
             rfb.addEventListener('disconnect', () => {
@@ -482,8 +504,10 @@ export function dashboardPage(): string {
               }, 800);
             });
           };
-          tile.rfb = attach(screen, display);
-          arm(tile.rfb);
+          if (display.kind !== 'neko') {
+            tile.rfb = attach(screen, display);
+            arm(tile.rfb);
+          }
         }
         tile.name.textContent = display.job_name || display.guest_id;
         tile.phase.textContent = display.status || 'live framebuffer';
@@ -492,7 +516,7 @@ export function dashboardPage(): string {
         if (seen.has(id)) continue;
         if (stageId === id) closeStage();
         tile.closed = true;
-        tile.rfb.disconnect();
+        if (tile.rfb) tile.rfb.disconnect();
         tile.article.remove();
         tiles.delete(id);
       }
@@ -518,6 +542,14 @@ export function dashboardPage(): string {
       };
     }
     connect();
+    fetch('/api/codex').then((res) => res.json()).then((data) => {
+      const node = document.getElementById('codex-status');
+      if (!node) return;
+      if (data.running) node.textContent = 'Codex is running.';
+      else if (!data.binary) node.textContent = 'Codex is not running: no codex binary on this machine. The desk chat is the local planner. Cua Driver is still the MCP server in .codex/config.toml.';
+      else if (!data.api_key) node.textContent = 'The codex binary is installed and the MCP config points at Cua Driver, but no OPENAI_API_KEY is set, so no model turn is running.';
+      else node.textContent = 'Codex is installed with a key. No codex process is running until a turn starts it.';
+    }).catch(() => {});
   </script>
 </body>
 </html>`;

@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { connect as connectTcp } from 'net';
 import { createServer as createHttpServer, type IncomingMessage, type Server } from 'http';
 import { mkdirSync, readFileSync, readdirSync, statSync } from 'fs';
@@ -78,6 +79,13 @@ export class DashboardServer {
         password: 'neko',
         admin_password: 'admin',
       });
+    });
+
+    this.app.get('/api/codex', (_req, res) => {
+      this.codexStatus().then(
+        (body) => res.json(body),
+        (error) => fail(res, error),
+      );
     });
 
     this.app.get('/api/neko/chat', (_req, res) => {
@@ -240,19 +248,65 @@ export class DashboardServer {
     this.push();
   }
 
+  private codexStatus(): Promise<{
+    binary: boolean;
+    api_key: boolean;
+    running: boolean;
+    mcp: string;
+    chat: string;
+  }> {
+    const look = (cmd: string, args: string[]) => new Promise<string>((resolve) => {
+      const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      const timer = setTimeout(() => child.kill('SIGKILL'), 2000);
+      child.stdout.on('data', (chunk) => {
+        out += chunk.toString('utf8');
+      });
+      child.on('close', () => {
+        clearTimeout(timer);
+        resolve(out.trim());
+      });
+      child.on('error', () => {
+        clearTimeout(timer);
+        resolve('');
+      });
+    });
+    return Promise.all([look('bash', ['-lc', 'command -v codex || true']), look('bash', ['-lc', 'pgrep -x codex || true'])]).then(([binary, running]) => ({
+      binary: Boolean(binary),
+      api_key: Boolean(process.env.OPENAI_API_KEY),
+      running: Boolean(running),
+      mcp: '.codex/config.toml',
+      chat: binary && process.env.OPENAI_API_KEY ? 'codex' : 'local planner',
+    }));
+  }
+
+  private nekoDisplay(): VmDisplay {
+    return {
+      guest_id: 'workshop-neko',
+      job_name: 'Neko desk',
+      status: 'webrtc — click the picture to control',
+      kind: 'neko',
+      neko_url: `${process.env.NEKO_URL || 'http://127.0.0.1:8341'}/?usr=neko&pwd=neko`,
+    };
+  }
+
   private publicState(state: DashboardState): DashboardState {
     const active = new Map(state.active_guests.map((guest) => [guest.id, guest]));
     return {
       ...state,
-      displays: [...this.displays.values()].map((display) => {
-        const guest = active.get(display.guest_id);
-        return {
-          guest_id: display.guest_id,
-          job_name: display.job_name || guest?.job_name,
-          status: guest?.status || display.status,
-          vnc_password: display.vnc_password,
-        };
-      }),
+      displays: [
+        this.nekoDisplay(),
+        ...[...this.displays.values()].map((display) => {
+          const guest = active.get(display.guest_id);
+          return {
+            guest_id: display.guest_id,
+            job_name: display.job_name || guest?.job_name,
+            status: guest?.status || display.status,
+            vnc_password: display.vnc_password,
+            kind: 'vnc' as const,
+          };
+        }),
+      ],
     };
   }
 

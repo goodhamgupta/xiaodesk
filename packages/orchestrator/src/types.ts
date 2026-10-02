@@ -99,6 +99,8 @@ export interface VmDisplay {
   job_name?: string;
   status?: string;
   vnc_password?: string;
+  kind?: 'vnc' | 'neko';
+  neko_url?: string;
 }
 
 export interface DashboardState {
