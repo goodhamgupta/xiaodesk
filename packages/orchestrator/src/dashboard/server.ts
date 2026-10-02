@@ -13,7 +13,7 @@ import { nekoPage } from './neko-page.js';
 import { listSnapshots, loadVm, saveVm } from '../vm/qmp.js';
 import { startVncRecording, type RecordingHandle } from '../vm/vnc-record.js';
 import { runDeskChat, type DeskEvent } from '../computer/desk.js';
-import { runNekoChat } from '../computer/neko.js';
+import { runNekoChat, runNekoDock } from '../computer/neko.js';
 
 export interface DashboardOptions {
   recordingsDir?: string;
@@ -60,6 +60,16 @@ export class DashboardServer {
 
   private setupRoutes(): void {
     this.app.use(express.json({ limit: '32kb' }));
+    this.app.use('/api/neko', (req, res, next) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', 'content-type');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      if (req.method === 'OPTIONS') {
+        res.status(204).end();
+        return;
+      }
+      next();
+    });
     this.app.use('/novnc', express.static(novncRoot));
 
     this.app.get('/', (_req, res) => {
@@ -90,6 +100,31 @@ export class DashboardServer {
 
     this.app.get('/api/neko/chat', (_req, res) => {
       res.json({ messages: this.chats.get('neko') || [] });
+    });
+
+    this.app.post('/api/neko/dock', (req, res) => {
+      const op = String(req.body?.op || '');
+      const mapped = op === 'browser' ? 'chrome' : op;
+      if (mapped !== 'chrome' && mapped !== 'terminal' && mapped !== 'files') {
+        res.status(400).json({ error: 'op must be browser, terminal, or files' });
+        return;
+      }
+      if (this.deskBusy.has('neko')) {
+        res.status(409).json({ error: 'this desktop is already working on a message' });
+        return;
+      }
+      this.deskBusy.add('neko');
+      runNekoDock(this.repoRoot(), mapped).then(
+        (result) => {
+          this.deskBusy.delete('neko');
+          if (!result.ok) res.status(502).json({ error: result.detail });
+          else res.json(result);
+        },
+        (error) => {
+          this.deskBusy.delete('neko');
+          fail(res, error);
+        },
+      );
     });
 
     this.app.post('/api/neko/chat', (req, res) => {

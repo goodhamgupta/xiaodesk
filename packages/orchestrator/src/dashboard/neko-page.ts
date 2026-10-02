@@ -42,7 +42,7 @@ export function nekoPage(nekoUrl: string): string {
   <header>
     <div>
       <h1>Neko desk</h1>
-      <p>Xfce in Docker, streamed by neko. Sign in on the desktop as <b>neko</b> / <b>neko</b> (admin / admin). The chat plans a turn and runs it inside the container: browser, terminal, file manager, clicks, and keys. Pointer moves go through Cua Driver when <code>cua-driver serve</code> is up, otherwise xdotool. No model key is required. The QEMU wall is at <a href="/vms">/vms</a>. Direct desktop: <a href="${nekoUrl}" target="_blank" rel="noreferrer">${nekoUrl}</a>.</p>
+      <p>The desktop is the neko stream with its own dock (browser, terminal, files), Take over / Release control, and the reaction row. The chat runs those same actions, including <code>react with thumbs up</code>. Sign-in is neko / neko. The QEMU wall is at <a href="/vms">/vms</a>.</p>
     </div>
   </header>
   <div class="stage">

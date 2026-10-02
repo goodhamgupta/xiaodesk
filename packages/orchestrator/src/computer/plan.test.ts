@@ -31,6 +31,11 @@ describe('desk planner', () => {
     expect(plan.actions[1]).toEqual({ op: 'files', path: '/home/lume/Desktop' });
   });
 
+  it('sends a neko reaction', () => {
+    expect(planDesk('react with thumbs up').actions).toEqual([{ op: 'react', emote: 'thumbs-up' }]);
+    expect(planDesk('open the terminal and react with a clap').actions.map((action) => action.op)).toEqual(['terminal', 'react']);
+  });
+
   it('asks for an app when the message is not a desktop action', () => {
     const plan = planDesk('thanks');
     expect(plan.actions).toEqual([]);

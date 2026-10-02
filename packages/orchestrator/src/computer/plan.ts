@@ -1,4 +1,4 @@
-export type DeskOp = 'chrome' | 'terminal' | 'files' | 'type' | 'key' | 'click' | 'scroll' | 'bash';
+export type DeskOp = 'chrome' | 'terminal' | 'files' | 'type' | 'key' | 'click' | 'scroll' | 'bash' | 'react';
 
 export interface DeskAction {
   op: DeskOp;
@@ -10,6 +10,7 @@ export interface DeskAction {
   x?: number;
   y?: number;
   dy?: number;
+  emote?: string;
 }
 
 export interface DeskPlan {
@@ -24,6 +25,30 @@ export interface PlanContext {
 
 const DEFAULT_HOME = '/home/lume';
 const DEFAULT_FIXTURES = 'http://10.0.2.2:4317';
+
+const EMOTES: Record<string, string> = {
+  'thumbs up': 'thumbs-up',
+  thumbsup: 'thumbs-up',
+  '+1': 'thumbs-up',
+  clap: 'clap',
+  heart: 'love',
+  love: 'love',
+  party: 'party',
+  wave: 'wave',
+  fire: 'flame',
+  flame: 'flame',
+  thinking: 'thinking',
+  ok: 'okay',
+  okay: 'okay',
+  celebrate: 'celebrate',
+  cool: 'cool',
+  sad: 'sad',
+  happy: 'happy',
+  laugh: 'rofl',
+  rofl: 'rofl',
+  '100': 'hundred',
+  hundred: 'hundred',
+};
 
 function shQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -83,6 +108,15 @@ function keyName(raw: string): string {
   return raw.trim();
 }
 
+function extractEmote(text: string): string | null {
+  const whole = text.toLowerCase().replace(/[?.!]/g, '').trim();
+  if (EMOTES[whole]) return EMOTES[whole];
+  const named = text.match(/\b(?:react|reaction|emote)\s+(?:with\s+(?:an?\s+)?)?([a-z0-9+][a-z0-9+ -]{0,24})/i);
+  if (!named) return null;
+  const key = named[1].toLowerCase().replace(/[?.!]$/, '').trim();
+  return EMOTES[key] || null;
+}
+
 function clauseActions(text: string, home: string, fixturesUrl: string): DeskAction[] {
   const actions: DeskAction[] = [];
   const url = extractUrl(text, fixturesUrl);
@@ -102,6 +136,7 @@ function clauseActions(text: string, home: string, fixturesUrl: string): DeskAct
   const key = text.match(/\bpress\s+([A-Za-z0-9+._-]+)/i);
   const scrollDown = /\bscroll down\b/i.test(text);
   const scrollUp = /\bscroll up\b/i.test(text);
+  const emote = extractEmote(text);
 
   if (click) actions.push({ op: 'click', x: Number(click[1]), y: Number(click[2]) });
   else if (center) actions.push({ op: 'click', x: 640, y: 400 });
@@ -123,6 +158,7 @@ function clauseActions(text: string, home: string, fixturesUrl: string): DeskAct
   if (key) actions.push({ op: 'key', key: keyName(key[1]) });
   if (scrollDown) actions.push({ op: 'scroll', dy: 3 });
   if (scrollUp) actions.push({ op: 'scroll', dy: -3 });
+  if (emote) actions.push({ op: 'react', emote });
   return actions;
 }
 
@@ -134,6 +170,7 @@ function describe(action: DeskAction, home: string): string {
   if (action.op === 'key') return `Press ${action.key}.`;
   if (action.op === 'click') return `Click ${action.x},${action.y}.`;
   if (action.op === 'scroll') return action.dy && action.dy < 0 ? 'Scroll up.' : 'Scroll down.';
+  if (action.op === 'react') return `React with ${action.emote}.`;
   return `Run \`${action.command || ''}\`.`;
 }
 
@@ -151,7 +188,7 @@ export function planDesk(message: string, context: PlanContext = {}): DeskPlan {
   const actions = parts.flatMap((part) => clauseActions(part, home, fixturesUrl));
   if (!actions.length) {
     return {
-      say: `I drive this desktop: the browser, the terminal, and the file browser. Try "open the terminal and run uname -a" or "open Chrome to ${fixturesUrl}".`,
+      say: `I drive this desktop: the browser, the terminal, and the file browser. I can also react on the neko screen ("react with thumbs up"). Try "open the terminal and run uname -a" or "open Chrome to ${fixturesUrl}".`,
       actions: [],
     };
   }

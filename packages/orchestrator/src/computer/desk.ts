@@ -119,6 +119,10 @@ export async function* runDeskChat(options: {
     return;
   }
   for (const action of plan.actions) {
+    if (action.op === 'react') {
+      yield { type: 'action', op: 'react', text: 'reactions play on the neko desk' };
+      continue;
+    }
     const result = await guestAction(options.sshPort, options.keyPath, action);
     if (!result.ok) {
       yield { type: 'error', text: result.detail };

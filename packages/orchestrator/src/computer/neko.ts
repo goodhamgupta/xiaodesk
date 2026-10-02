@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { WebSocket } from 'ws';
 import { planDesk, type DeskAction, type DeskPlan } from './plan.js';
 import type { DeskEvent } from './desk.js';
 
@@ -64,6 +65,54 @@ async function guestAction(action: DeskAction | { op: 'shot' }): Promise<{ ok: b
   }
 }
 
+const REACTION_IDS = new Set([
+  'thumbs-up', 'clap', 'love', 'party', 'wave', 'flame', 'thinking', 'okay',
+  'celebrate', 'cool', 'happy', 'sad', 'rofl', 'hundred',
+]);
+
+export function sendNekoEmote(emote: string): Promise<void> {
+  if (!REACTION_IDS.has(emote)) return Promise.reject(new Error(`unknown reaction ${emote}`));
+  const url = process.env.NEKO_WS || 'ws://127.0.0.1:8341/ws?password=neko&username=codex';
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url);
+    let sent = false;
+    const timer = setTimeout(() => {
+      ws.close();
+      reject(new Error('neko reaction timed out'));
+    }, 8000);
+    const finish = (error?: Error) => {
+      clearTimeout(timer);
+      ws.close();
+      if (error) reject(error);
+      else resolve();
+    };
+    ws.on('message', (buf) => {
+      let msg: { event?: string };
+      try {
+        msg = JSON.parse(buf.toString()) as { event?: string };
+      } catch {
+        return;
+      }
+      if (msg.event === 'system/init' && !sent) {
+        sent = true;
+        ws.send(JSON.stringify({ event: 'chat/emote', emote }));
+      }
+      if (msg.event === 'chat/emote' && sent) finish();
+    });
+    ws.on('error', (error) => finish(error instanceof Error ? error : new Error(String(error))));
+  });
+}
+
+export async function runNekoDock(repoRoot: string, op: 'chrome' | 'terminal' | 'files'): Promise<{ ok: boolean; detail: string }> {
+  await ensureScript(repoRoot);
+  const action: DeskAction = op === 'chrome'
+    ? { op: 'chrome', url: 'about:blank' }
+    : op === 'terminal'
+      ? { op: 'terminal' }
+      : { op: 'files', path: HOME };
+  return guestAction(action);
+}
+
 export async function* runNekoChat(options: {
   message: string;
   repoRoot: string;
@@ -84,6 +133,17 @@ export async function* runNekoChat(options: {
     return;
   }
   for (const action of plan.actions) {
+    if (action.op === 'react') {
+      try {
+        await sendNekoEmote(action.emote || '');
+        yield { type: 'action', op: 'react', text: `reaction ${action.emote}` };
+      } catch (error) {
+        yield { type: 'error', text: error instanceof Error ? error.message : String(error) };
+        yield { type: 'done' };
+        return;
+      }
+      continue;
+    }
     const result = await guestAction(action);
     if (!result.ok) {
       yield { type: 'error', text: result.detail };

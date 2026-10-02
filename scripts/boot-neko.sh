@@ -56,4 +56,5 @@ if [[ "${nat_ip}" == "127.0.0.1" ]] && ! ss -uln | grep -q '127.0.0.1:52100'; th
   fi
 fi
 
+bash "${ROOT}/scripts/neko/install-ui.sh"
 echo "neko ${name} -> http://${bind}  user/neko  admin/admin"
