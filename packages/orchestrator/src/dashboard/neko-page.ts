@@ -1,4 +1,4 @@
-export function nekoPage(nekoUrl: string): string {
+export function nekoPage(): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -42,11 +42,11 @@ export function nekoPage(nekoUrl: string): string {
   <header>
     <div>
       <h1>Neko desk</h1>
-      <p>The desktop is the neko stream with its own dock (browser, terminal, files), Take over / Release control, and the reaction row. This chat is the main OpenClaw desk: <code>nodes</code>, <code>on workshop-neko open the terminal</code>, and <code>state of workshop-neko</code>. A VM posts back with <code>tell main ...</code> or <code>desk-tell</code> inside the container. Sign-in is neko / neko. The QEMU wall is at <a href="/vms">/vms</a>.</p>
+      <p>The desktop is the neko XFCE session, carried on this page's connection. Click the picture for the pointer. The launcher dock hides until the pointer hits the screen edge. This chat is the main OpenClaw desk: <code>nodes</code>, <code>on workshop-neko open the terminal</code>, and <code>state of workshop-neko</code>. A VM posts back with <code>tell main ...</code> or <code>desk-tell</code> inside the container. The QEMU wall is at <a href="/vms">/vms</a>.</p>
     </div>
   </header>
   <div class="stage">
-    <div class="screen"><iframe src="${nekoUrl}" title="Neko desktop" allow="autoplay; fullscreen; clipboard-read; clipboard-write"></iframe></div>
+    <div class="screen" id="neko-screen"></div>
     <aside class="desk">
       <div class="desk-head">
         <strong>Desk bot</strong>
@@ -59,6 +59,19 @@ export function nekoPage(nekoUrl: string): string {
       </form>
     </aside>
   </div>
+  <script type="module">
+    import RFB from '/novnc/core/rfb.js';
+    const screen = document.getElementById('neko-screen');
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const rfb = new RFB(screen, proto + '//' + location.host + '/vm/workshop-neko/vnc', { shared: true });
+    rfb.viewOnly = false;
+    rfb.focusOnClick = true;
+    rfb.scaleViewport = true;
+    rfb.compressionLevel = 0;
+    rfb.qualityLevel = 9;
+    rfb.background = '#000000';
+    window.addEventListener('resize', () => { rfb.scaleViewport = true; });
+  </script>
   <script>
     const deskLog = document.getElementById('desk-log');
     const deskForm = document.getElementById('desk-form');

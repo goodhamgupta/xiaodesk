@@ -79,7 +79,7 @@ export class DashboardServer {
     this.app.use('/novnc', express.static(novncRoot));
 
     this.app.get('/', (_req, res) => {
-      res.type('html').send(nekoPage(process.env.NEKO_URL || 'http://127.0.0.1:8341'));
+      res.type('html').send(nekoPage());
     });
 
     this.app.get('/vms', (_req, res) => {
@@ -421,13 +421,19 @@ export class DashboardServer {
     }));
   }
 
+  private nekoVncPort(): number {
+    const port = Number(process.env.NEKO_VNC_PORT || 5930);
+    return Number.isInteger(port) && port > 0 ? port : 5930;
+  }
+
   private nekoDisplay(): VmDisplay {
+    // The picture is VNC on this server, not an iframe to 127.0.0.1:8341.
+    // A browser that only has the dashboard port forwarded cannot open the neko HTTP port.
     return {
       guest_id: 'workshop-neko',
       job_name: 'Neko desk',
-      status: 'webrtc — click the picture to control',
-      kind: 'neko',
-      neko_url: `${process.env.NEKO_URL || 'http://127.0.0.1:8341'}/?usr=neko&pwd=neko`,
+      status: 'live framebuffer',
+      kind: 'vnc',
     };
   }
 
@@ -832,12 +838,13 @@ export class DashboardServer {
 
   private bridgeVnc(guestId: string, req: IncomingMessage, socket: Duplex, head: Buffer): void {
     const display = this.displays.get(guestId);
-    if (!display || !this.wss || display.kind === 'neko' || !display.vncPort) {
+    const port = guestId === 'workshop-neko' ? this.nekoVncPort() : display?.vncPort;
+    if (!port || !this.wss || (guestId !== 'workshop-neko' && (!display || display.kind === 'neko'))) {
       socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }
-    const tcp = connectTcp({ port: display.vncPort, host: '127.0.0.1' });
+    const tcp = connectTcp({ port, host: '127.0.0.1' });
     tcp.setNoDelay(true);
     const fail = () => {
       tcp.destroy();

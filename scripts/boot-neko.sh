@@ -67,6 +67,17 @@ if [[ "${nat_ip}" == "127.0.0.1" ]] && ! ss -uln | grep -q '127.0.0.1:52100'; th
   fi
 fi
 
+# The dashboard embeds this desktop over its own port. An iframe to
+# 127.0.0.1:8341 is the viewer's loopback, so the picture is x11vnc.
+vnc_port="${NEKO_VNC_PORT:-5930}"
+if ! docker_cmd exec "$name" bash -lc 'command -v x11vnc >/dev/null'; then
+  docker_cmd exec "$name" bash -lc 'export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y x11vnc'
+fi
+if ! python3 -c "import socket,sys; s=socket.socket(); s.settimeout(0.4); s.connect(('127.0.0.1', ${vnc_port}))" >/dev/null 2>&1; then
+  docker_cmd exec -d -u neko -e DISPLAY="${NEKO_DISPLAY:-:99.0}" "$name" \
+    x11vnc -display "${NEKO_DISPLAY:-:99}" -rfbport "$vnc_port" -listen 127.0.0.1 -nopw -shared -forever -noxdamage -repeat
+fi
+
 bash "${ROOT}/scripts/neko/install-ui.sh"
 if [[ -x /opt/openclaw/bin/openclaw ]]; then
   bash "${ROOT}/scripts/openclaw-up.sh" --container "$name"

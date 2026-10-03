@@ -71,7 +71,7 @@ export function dashboardPage(): string {
   <header>
     <div>
       <h1>VM screens</h1>
-      <p>The first tile is the neko XFCE desktop. Its launcher dock hides until the pointer hits the screen edge. The other tiles are QEMU guests: click the picture for the pointer, or press Chat to open that screen with the desk chat. <span id="codex-status">Checking Codex…</span></p>
+      <p>The first tile is the neko XFCE desktop, on the same connection as the other tiles. Its launcher dock hides until the pointer hits the screen edge. Click a picture for the pointer, or press Chat to open that screen with the desk chat. <span id="codex-status">Checking Codex…</span></p>
     </div>
     <div id="connection" class="connection">Connecting</div>
   </header>
@@ -260,7 +260,7 @@ export function dashboardPage(): string {
 
     function chatUrl(id) {
       const display = latest.find((item) => item.guest_id === id);
-      if (display && display.kind === 'neko') return '/api/neko/chat?guest=' + encodeURIComponent(id);
+      if (display && (display.kind === 'neko' || display.guest_id === 'workshop-neko')) return '/api/neko/chat?guest=' + encodeURIComponent(id);
       return '/api/vms/' + encodeURIComponent(id) + '/chat';
     }
 
@@ -268,7 +268,7 @@ export function dashboardPage(): string {
       const display = latest.find((item) => item.guest_id === id);
       const hint = document.getElementById('desk-hint');
       if (hint) {
-        hint.textContent = display && display.kind === 'neko'
+        hint.textContent = display && (display.kind === 'neko' || display.guest_id === 'workshop-neko')
           ? 'This neko desktop is an OpenClaw node. tell main ... posts here, and the main desk can run on <node> ....'
           : 'Chrome, a terminal, and the file browser. The message is typed on this screen.';
       }
@@ -288,7 +288,7 @@ export function dashboardPage(): string {
     setInterval(async () => {
       if (!stageId || deskSending) return;
       const display = latest.find((item) => item.guest_id === stageId);
-      if (!display || display.kind !== 'neko') return;
+      if (!display || (display.kind !== 'neko' && display.guest_id !== 'workshop-neko')) return;
       try {
         const res = await fetch(chatUrl(stageId));
         if (!res.ok) return;
