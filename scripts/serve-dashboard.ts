@@ -6,13 +6,18 @@ import { repoRoot } from '../drivers/process/driver.js';
 import type { DashboardState, JobResult } from '../packages/orchestrator/src/types.js';
 
 const port = Number(process.env.DASHBOARD_PORT || 4318);
-const summary = JSON.parse(readFileSync(join(repoRoot, 'runs/latest.json'), 'utf8')) as {
-  passed: number;
-  failed: number;
-  timeout: number;
-  peak_concurrent: number;
-  results: JobResult[];
+let summary = {
+  passed: 0,
+  failed: 0,
+  timeout: 0,
+  peak_concurrent: 0,
+  results: [] as JobResult[],
 };
+try {
+  summary = JSON.parse(readFileSync(join(repoRoot, 'runs/latest.json'), 'utf8')) as typeof summary;
+} catch {
+  // First run: the dashboard can start before any demo has written results.
+}
 
 const state: DashboardState = {
   config: createDefaultConfig({

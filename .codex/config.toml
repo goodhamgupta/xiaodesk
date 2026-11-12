@@ -3,4 +3,5 @@
 # on DISPLAY=:99.0. This command is the host-side wrapper.
 
 [mcp_servers.cua-driver]
-command = "/workspace/scripts/neko/cua-driver-mcp.sh"
+command = "bash"
+args = ["-lc", "exec scripts/neko/cua-driver-mcp.sh"]

@@ -8,6 +8,24 @@ export function dashboardPage(): string {
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; background: #070b14; color: #e7ecf5; font-family: ui-sans-serif, system-ui, sans-serif; }
+    .topbar {
+      height: 44px; flex: 0 0 44px; display: flex; align-items: center; gap: 16px;
+      padding: 0 12px; background: #131417; border-bottom: 1px solid #2a2d33;
+    }
+    .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .mark {
+      width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center;
+      background: linear-gradient(135deg, #4c9aff, #7b61ff); color: white; font-size: 9px; font-weight: 800;
+    }
+    .brand strong { display: block; font-size: 13px; font-weight: 650; line-height: 1.2; }
+    .brand span { display: block; color: #6c717a; font-size: 11px; line-height: 1.2; }
+    .topbar .connection { margin-left: auto; }
+    .topbar .btn {
+      height: 27px; padding: 0 9px; border-radius: 6px; border: 1px solid #2a2d33;
+      background: #1c1e22; color: #a3a8b1; font-size: 11.5px; text-decoration: none;
+      display: inline-flex; align-items: center;
+    }
+    .topbar .btn:hover { background: #26292e; color: #e8e9ec; }
     header { display: flex; justify-content: space-between; gap: 1rem; align-items: end; padding: 1.25rem 1.5rem 0.5rem; }
     h1 { font-size: 1.25rem; font-weight: 650; margin: 0; }
     header p { margin: 0.35rem 0 0; color: #93a0b8; font-size: 0.9rem; }
@@ -30,6 +48,12 @@ export function dashboardPage(): string {
     .connection.connected { background: #143224; color: #9be7c4; }
     .stage { position: fixed; inset: 0; z-index: 20; background: #000; display: none; flex-direction: column; }
     .stage.open { display: flex; }
+    .stage.neko #rec-start, .stage.neko #rec-stop, .stage.neko #snap-name,
+    .stage.neko #snap-save, .stage.neko #snap-load { display: none; }
+    #take-control {
+      display: none; background: #4c9aff; border-color: #4c9aff; color: #08111f; font-weight: 650;
+    }
+    .stage.neko #take-control { display: inline-flex; align-items: center; }
     .stage .bar { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; padding: 0.55rem 0.9rem; background: #0c1220; color: #e7ecf5; }
     .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
     .actions input { width: 7.5rem; background: #070b14; color: #e7ecf5; border: 1px solid #31415f; border-radius: 8px; padding: 0.4rem 0.5rem; }
@@ -55,6 +79,7 @@ export function dashboardPage(): string {
     .bubble { border-radius: 10px; padding: 0.45rem 0.6rem; font-size: 0.86rem; line-height: 1.35; white-space: pre-wrap; }
     .bubble.user { background: #1b2740; align-self: flex-end; max-width: 95%; }
     .bubble.assistant { background: #121a2b; border: 1px solid #243049; }
+    .bubble.reasoning { background: #0d1422; border: 1px dashed #2b3a55; color: #9fb0cc; font-size: 0.8rem; font-style: italic; }
     .bubble.action { background: transparent; color: #9be7c4; font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0.1rem 0.2rem; }
     .bubble.error { background: #3a1d1d; color: #f0b4b4; }
     .bubble img { width: 100%; border-radius: 8px; margin-top: 0.35rem; display: block; }
@@ -68,14 +93,14 @@ export function dashboardPage(): string {
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>VM screens</h1>
-      <p>The first tile is the neko XFCE desktop, on the same connection as the other tiles. Its launcher dock hides until the pointer hits the screen edge. Click a picture for the pointer, or press Chat to open that screen with the desk chat. <span id="codex-status">Checking Codex…</span></p>
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">VM</div>
+      <div><strong>VM screens</strong><span>Live WebRTC desktops</span></div>
     </div>
     <div id="connection" class="connection">Connecting</div>
+    <a class="btn" href="/">Desk</a>
   </header>
-  <section class="stats" id="stats"></section>
   <section class="wall" id="wall"></section>
   <section class="recordings">
     <h2>Session recordings</h2>
@@ -86,6 +111,7 @@ export function dashboardPage(): string {
     <div class="bar">
       <strong id="stage-title">VM</strong>
       <div class="actions">
+        <button id="take-control" type="button">Take control</button>
         <button id="rec-start" type="button">Record</button>
         <button id="rec-stop" type="button">Stop</button>
         <input id="snap-name" value="lab1" maxlength="40" aria-label="Snapshot name">
@@ -202,10 +228,15 @@ export function dashboardPage(): string {
       if (!tile) return;
       stageId = id;
       stage.classList.add('open');
+      stage.classList.toggle('neko', tile.kind === 'neko');
       stageTitle.textContent = tile.name.textContent || id;
       note('');
       if (tile.kind === 'neko') {
-        requestAnimationFrame(() => fit(tile));
+        requestAnimationFrame(() => {
+          fit(tile);
+          setTimeout(cleanStageNeko, 500);
+          setTimeout(cleanStageNeko, 1600);
+        });
       } else {
         stageScreen.append(tile.screen);
         fit(tile);
@@ -217,6 +248,7 @@ export function dashboardPage(): string {
       if (!stageId) return;
       const tile = tiles.get(stageId);
       stage.classList.remove('open');
+      stage.classList.remove('neko');
       stageId = null;
       if (tile) {
         clearFit(tile);
@@ -240,11 +272,24 @@ export function dashboardPage(): string {
     const deskLog = document.getElementById('desk-log');
     let deskShown = 0;
     let deskSending = false;
+    const deskBubbles = new Map();
     const deskForm = document.getElementById('desk-form');
     const deskInput = document.getElementById('desk-input');
     const deskSend = document.getElementById('desk-send');
 
-    function addBubble(role, text, file) {
+    function addBubble(role, text, file, id) {
+      if (id && deskBubbles.has(id)) {
+        const existing = deskBubbles.get(id);
+        existing.textContent = text || '';
+        if (file) {
+          const img = document.createElement('img');
+          img.alt = 'Desktop after the turn';
+          img.src = '/api/desk-shots/' + encodeURIComponent(file);
+          existing.append(img);
+        }
+        deskLog.scrollTop = deskLog.scrollHeight;
+        return existing;
+      }
       const node = document.createElement('div');
       node.className = 'bubble ' + (role || 'assistant');
       node.textContent = text || '';
@@ -255,6 +300,15 @@ export function dashboardPage(): string {
         node.append(img);
       }
       deskLog.append(node);
+      if (id) deskBubbles.set(id, node);
+      deskLog.scrollTop = deskLog.scrollHeight;
+      return node;
+    }
+
+    function appendDelta(role, id, text) {
+      let node = id ? deskBubbles.get(id) : null;
+      if (!node) node = addBubble(role, '', undefined, id);
+      node.textContent += text || '';
       deskLog.scrollTop = deskLog.scrollHeight;
     }
 
@@ -268,11 +322,24 @@ export function dashboardPage(): string {
       const display = latest.find((item) => item.guest_id === id);
       const hint = document.getElementById('desk-hint');
       if (hint) {
-        hint.textContent = display && (display.kind === 'neko' || display.guest_id === 'workshop-neko')
-          ? 'This neko desktop is an OpenClaw node. tell main ... posts here, and the main desk can run on <node> ....'
+        const isNeko = display && (display.kind === 'neko' || display.guest_id === 'workshop-neko');
+        hint.textContent = isNeko
+          ? 'Codex runs inside this desktop · cua-driver'
           : 'Chrome, a terminal, and the file browser. The message is typed on this screen.';
+        if (isNeko) {
+          fetch('/api/openclaw')
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+              const names = Array.isArray(data?.node_names) ? data.node_names : [];
+              if (names.includes(id)) {
+                hint.textContent = 'OpenClaw node · tell main ... posts here, and the main desk can run on <node> ....';
+              }
+            })
+            .catch(() => {});
+        }
       }
       deskLog.replaceChildren();
+      deskBubbles.clear();
       try {
         const res = await fetch(chatUrl(id));
         if (!res.ok) return;
@@ -296,6 +363,7 @@ export function dashboardPage(): string {
         const messages = data.messages || [];
         if (messages.length === deskShown) return;
         deskLog.replaceChildren();
+        deskBubbles.clear();
         for (const message of messages) addBubble(message.role, message.text, message.file);
         deskShown = messages.length;
       } catch (err) { /* the next poll retries */ }
@@ -353,7 +421,10 @@ export function dashboardPage(): string {
           const parsed = takeEvents(buf);
           buf = parsed.rest;
           for (const payload of parsed.events) {
-            if (payload.type === 'assistant') addBubble('assistant', payload.text);
+            if (payload.type === 'assistant_delta') appendDelta('assistant', payload.id, payload.text);
+            else if (payload.type === 'reasoning_delta') appendDelta('reasoning', payload.id, payload.text);
+            else if (payload.type === 'assistant') addBubble('assistant', payload.text, undefined, payload.id);
+            else if (payload.type === 'reasoning') addBubble('reasoning', payload.text, undefined, payload.id);
             else if (payload.type === 'action') addBubble('action', payload.text);
             else if (payload.type === 'error') addBubble('error', payload.text);
             else if (payload.type === 'shot') addBubble('action', payload.text || 'Screen', payload.file);
@@ -443,6 +514,22 @@ export function dashboardPage(): string {
     refreshRecordings();
     setInterval(refreshRecordings, 4000);
 
+    function cleanStageNeko() {
+      const frame = document.querySelector('#stage-screen iframe');
+      const doc = frame?.contentDocument;
+      if (!doc || doc.getElementById('workshop-embed-css')) return;
+      const style = doc.createElement('style');
+      style.id = 'workshop-embed-css';
+      style.textContent = '#neko header, #neko aside, #neko [data-testid="header"], #neko [data-testid="side"], #neko [data-testid="room-bar"], #neko [data-testid="player-overlay"], #neko ul.absolute, #neko [class*="top-["], #neko [class*="bottom-["] { display: none !important; } #neko .video-container { height: 100vh !important; }';
+      doc.head.append(style);
+    }
+    document.getElementById('take-control').addEventListener('click', () => {
+      const frame = document.querySelector('#stage-screen iframe');
+      frame?.focus();
+      try { frame?.contentWindow?.focus(); } catch {}
+      cleanStageNeko();
+      note('You control this desktop');
+    });
     document.getElementById('stage-close').addEventListener('click', closeStage);
     window.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape' || !stageId) return;
@@ -451,7 +538,7 @@ export function dashboardPage(): string {
     });
 
     function renderStats(state) {
-      if (!state.stats) return;
+      if (!statsEl || !state.stats) return;
       const items = [
         ['Queued', state.stats.pending],
         ['Running', state.stats.running],

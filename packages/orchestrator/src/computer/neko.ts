@@ -113,6 +113,29 @@ export async function runNekoDock(repoRoot: string, op: 'chrome' | 'terminal' | 
   return guestAction(action, container);
 }
 
+export async function runNekoUrl(repoRoot: string, url: string, container = CONTAINER): Promise<{ ok: boolean; detail: string }> {
+  let path = '/';
+  try {
+    const parsed = new URL(url);
+    path = `${parsed.pathname || '/'}${parsed.search}`;
+  } catch {
+    path = url.startsWith('/') ? url : '/';
+  }
+  const result = await run(dockerBin(), [
+    'exec', '-u', 'neko',
+    '-e', `DISPLAY=${DISPLAY}`,
+    '-e', `HOME=${HOME}`,
+    '-e', 'XDG_RUNTIME_DIR=/tmp/runtime-neko',
+    container,
+    '/usr/local/bin/workshop-fixtures',
+    path,
+  ], 30_000);
+  return {
+    ok: result.code === 0,
+    detail: result.code === 0 ? `fixtures ${path}` : (result.stderr.trim() || `fixtures exited ${result.code}`),
+  };
+}
+
 export async function* runNekoChat(options: {
   message: string;
   repoRoot: string;

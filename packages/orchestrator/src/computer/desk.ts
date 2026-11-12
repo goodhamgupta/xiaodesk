@@ -4,10 +4,11 @@ import { join } from 'node:path';
 import { planDesk, type DeskAction, type DeskPlan } from './plan.js';
 
 export interface DeskEvent {
-  type: 'assistant' | 'action' | 'shot' | 'error' | 'done';
+  type: 'assistant' | 'assistant_delta' | 'reasoning' | 'reasoning_delta' | 'action' | 'shot' | 'error' | 'done';
   text?: string;
   op?: string;
   file?: string;
+  id?: string;
 }
 
 const ready = new Set<string>();

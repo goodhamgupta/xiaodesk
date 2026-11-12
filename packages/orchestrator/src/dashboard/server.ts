@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { connect as connectTcp } from 'net';
-import { createServer as createHttpServer, type IncomingMessage, type Server } from 'http';
-import { mkdirSync, readFileSync, readdirSync, statSync } from 'fs';
+import { createServer as createHttpServer, request as httpRequest, type IncomingMessage, type Server, type ServerResponse } from 'http';
+import { mkdirSync, readFileSync, readdirSync, statSync, existsSync } from 'fs';
+import { homedir } from 'os';
 import { basename, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import express, { type Response } from 'express';
@@ -14,9 +15,10 @@ import { listSnapshots, loadVm, saveVm } from '../vm/qmp.js';
 import { startVncRecording, type RecordingHandle } from '../vm/vnc-record.js';
 import { runDeskChat, runGuestDock, type DeskEvent } from '../computer/desk.js';
 import { planFleet } from '../computer/fleet.js';
-import { runNekoChat, runNekoDock, sendNekoEmote } from '../computer/neko.js';
+import { runNekoChat, runNekoDock, runNekoUrl, sendNekoEmote } from '../computer/neko.js';
 import { gatewayUp, listNodes, nodeState, postDeskHook, runDeskTool } from '../computer/openclaw.js';
 import { planDesk } from '../computer/plan.js';
+import { codexDeskAvailable, runCodexDesk } from '../computer/codex.js';
 
 export interface DashboardOptions {
   recordingsDir?: string;
@@ -25,7 +27,7 @@ export interface DashboardOptions {
 }
 
 interface ChatLine {
-  role: 'user' | 'assistant' | 'action' | 'error';
+  role: 'user' | 'assistant' | 'reasoning' | 'action' | 'error';
   text: string;
   file?: string;
 }
@@ -40,6 +42,7 @@ function fail(res: Response, error: unknown): void {
 
 interface RegisteredDisplay extends VmDisplay {
   vncPort: number;
+  httpPort?: number;
 }
 
 export class DashboardServer {
@@ -65,6 +68,17 @@ export class DashboardServer {
   }
 
   private setupRoutes(): void {
+    // Proxy neko's HTTP surface before express.json() consumes request bodies.
+    this.app.get('/neko/:id', (req, res, next) => {
+      if (req.path.endsWith('/')) {
+        next();
+        return;
+      }
+      res.redirect(301, `/neko/${encodeURIComponent(String(req.params.id))}/`);
+    });
+    this.app.use('/neko/:id', (req, res) => {
+      this.proxyNekoHttp(req, res).catch((error) => fail(res, error));
+    });
     this.app.use(express.json({ limit: '32kb' }));
     this.app.use('/api/neko', (req, res, next) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
@@ -137,6 +151,34 @@ export class DashboardServer {
       }
       this.deskBusy.add(container);
       runNekoDock(this.repoRoot(), mapped, container).then(
+        (result) => {
+          this.deskBusy.delete(container);
+          if (!result.ok) res.status(502).json({ error: result.detail });
+          else res.json(result);
+        },
+        (error) => {
+          this.deskBusy.delete(container);
+          fail(res, error);
+        },
+      );
+    });
+
+    this.app.post('/api/neko/fixtures', (req, res) => {
+      let container = process.env.NEKO_NAME || 'workshop-neko';
+      try {
+        container = this.nekoContainer(String(req.body?.container || ''));
+      } catch (error) {
+        fail(res, error);
+        return;
+      }
+      if (this.deskBusy.has(container)) {
+        res.status(409).json({ error: 'this desktop is already working on a message' });
+        return;
+      }
+      const url = process.env.WORKSHOP_FIXTURES_URL
+        || (process.platform === 'darwin' ? 'http://host.docker.internal:4317' : 'http://127.0.0.1:4317');
+      this.deskBusy.add(container);
+      runNekoUrl(this.repoRoot(), url, container).then(
         (result) => {
           this.deskBusy.delete(container);
           if (!result.ok) res.status(502).json({ error: result.detail });
@@ -347,21 +389,24 @@ export class DashboardServer {
     this.inboxTimer = setInterval(() => this.pollInbox(), 1000);
   }
 
-  registerDisplay(info: { guestId: string; vncPort?: number; vncPassword?: string; jobName?: string; status?: string; kind?: 'vnc' | 'neko'; nekoUrl?: string; container?: string }): void {
+  registerDisplay(info: { guestId: string; vncPort?: number; vncPassword?: string; jobName?: string; status?: string; kind?: 'vnc' | 'neko'; nekoUrl?: string; httpPort?: number; container?: string }): void {
     this.displays.set(info.guestId, {
       guest_id: info.guestId,
       job_name: info.jobName,
       status: info.status || (info.kind === 'neko' ? 'webrtc — click the picture to control' : 'booting'),
       vnc_password: info.vncPassword,
       vncPort: info.vncPort ?? 0,
+      httpPort: info.httpPort,
       kind: info.kind || (info.nekoUrl ? 'neko' : 'vnc'),
       neko_url: info.nekoUrl,
     });
-    if (info.container && info.nekoUrl) {
-      const host = new URL(info.nekoUrl).host;
+    if (info.container) {
+      const wsUrl = info.nekoUrl && /^https?:/i.test(info.nekoUrl)
+        ? `ws://${new URL(info.nekoUrl).host}/ws?password=neko&username=codex`
+        : '';
       this.nekoTargets.set(info.guestId, {
         container: info.container,
-        wsUrl: `ws://${host}/ws?password=neko&username=codex`,
+        wsUrl,
       });
     }
     this.push();
@@ -412,13 +457,16 @@ export class DashboardServer {
         resolve('');
       });
     });
-    return Promise.all([look('bash', ['-lc', 'command -v codex || true']), look('bash', ['-lc', 'pgrep -x codex || true'])]).then(([binary, running]) => ({
-      binary: Boolean(binary),
-      api_key: Boolean(process.env.OPENAI_API_KEY),
-      running: Boolean(running),
-      mcp: '.codex/config.toml',
-      chat: binary && process.env.OPENAI_API_KEY ? 'codex' : 'local planner',
-    }));
+    return Promise.all([look('bash', ['-lc', 'command -v codex || true']), look('bash', ['-lc', 'pgrep -x codex || true'])]).then(([binary, running]) => {
+      const auth = process.env.OPENAI_API_KEY || existsSync(join(homedir(), '.codex', 'auth.json'));
+      return {
+        binary: Boolean(binary),
+        api_key: Boolean(auth),
+        running: Boolean(running),
+        mcp: '.codex/config.toml',
+        chat: binary && auth && codexDeskAvailable() ? 'codex' : 'local planner',
+      };
+    });
   }
 
   private nekoVncPort(): number {
@@ -426,14 +474,68 @@ export class DashboardServer {
     return Number.isInteger(port) && port > 0 ? port : 5930;
   }
 
+  private nekoHttpPort(id: string): number | undefined {
+    if (id === 'workshop-neko') return Number(process.env.NEKO_PORT || 8341);
+    if (id === (process.env.NEKO_SECONDARY_NAME || 'workshop-neko-2')) return Number(process.env.NEKO_SECONDARY_PORT || 8342);
+    return this.displays.get(id)?.httpPort;
+  }
+
+  private async proxyNekoHttp(req: IncomingMessage & { params?: { id?: string }; originalUrl?: string }, res: ServerResponse): Promise<void> {
+    const id = String(req.params?.id || '');
+    const port = this.nekoHttpPort(id);
+    if (!port) {
+      res.statusCode = 404;
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ error: 'neko display is not registered' }));
+      return;
+    }
+    const path = (req.originalUrl || req.url || '/').replace(/\/{2,}/g, '/');
+    const headers: Record<string, string | string[] | undefined> = { ...req.headers, host: `127.0.0.1:${port}` };
+    delete headers.connection;
+    const upstream = httpRequest({ host: '127.0.0.1', port, path, method: req.method, headers }, (reply) => {
+      const replyHeaders = { ...reply.headers };
+      if (replyHeaders['set-cookie']) {
+        replyHeaders['set-cookie'] = replyHeaders['set-cookie'].map((cookie) => {
+          if (/;\s*path=/i.test(cookie)) return cookie.replace(/;\s*path=[^;]*/i, `; Path=/neko/${id}/`);
+          return `${cookie}; Path=/neko/${id}/`;
+        });
+      }
+      if (replyHeaders.location && replyHeaders.location.startsWith('/') && !replyHeaders.location.startsWith(`/neko/${id}`)) {
+        replyHeaders.location = `/neko/${id}${replyHeaders.location}`;
+      }
+      res.writeHead(reply.statusCode || 502, replyHeaders);
+      reply.pipe(res);
+    });
+    upstream.on('error', () => {
+      if (!res.headersSent) {
+        res.statusCode = 502;
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ error: 'neko proxy failed' }));
+      } else {
+        res.end();
+      }
+    });
+    req.pipe(upstream);
+  }
+
   private nekoDisplay(): VmDisplay {
-    // The picture is VNC on this server, not an iframe to 127.0.0.1:8341.
-    // A browser that only has the dashboard port forwarded cannot open the neko HTTP port.
     return {
       guest_id: 'workshop-neko',
       job_name: 'Neko desk',
-      status: 'live framebuffer',
-      kind: 'vnc',
+      status: 'webrtc — click the picture to control',
+      kind: 'neko',
+      neko_url: '/neko/workshop-neko/?usr=neko&pwd=neko&embed=1',
+    };
+  }
+
+  private secondaryNekoDisplay(): VmDisplay {
+    const name = process.env.NEKO_SECONDARY_NAME || 'workshop-neko-2';
+    return {
+      guest_id: name,
+      job_name: 'Neko desk 2',
+      status: 'webrtc — click the picture to control',
+      kind: 'neko',
+      neko_url: `/neko/${name}/?usr=neko&pwd=neko&embed=1`,
     };
   }
 
@@ -443,6 +545,7 @@ export class DashboardServer {
       ...state,
       displays: [
         this.nekoDisplay(),
+        this.secondaryNekoDisplay(),
         ...[...this.displays.values()].map((display) => {
           const guest = active.get(display.guest_id);
           return {
@@ -487,6 +590,11 @@ export class DashboardServer {
 
   private routeUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
+    const neko = url.pathname.match(/^\/neko\/([^/]+)(\/.*)$/);
+    if (neko) {
+      this.bridgeNeko(decodeURIComponent(neko[1]), req, socket, head, `${url.pathname}${url.search}`);
+      return;
+    }
     const match = url.pathname.match(/^\/vm\/([^/]+)\/vnc$/);
     if (match) {
       this.bridgeVnc(decodeURIComponent(match[1]), req, socket, head);
@@ -494,6 +602,43 @@ export class DashboardServer {
     }
     this.wss?.handleUpgrade(req, socket, head, (ws) => {
       this.wss?.emit('connection', ws, req);
+    });
+  }
+
+  private bridgeNeko(id: string, req: IncomingMessage, socket: Duplex, head: Buffer, path: string): void {
+    const port = this.nekoHttpPort(id);
+    if (!port) {
+      socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    const tcp = connectTcp({ port, host: '127.0.0.1' });
+    tcp.setNoDelay(true);
+    const fail = () => {
+      tcp.destroy();
+      socket.destroy();
+    };
+    tcp.once('error', fail);
+    tcp.once('connect', () => {
+      tcp.removeListener('error', fail);
+      tcp.on('error', fail);
+      socket.on('error', fail);
+      const headers: string[] = [];
+      for (let i = 0; i < req.rawHeaders.length; i += 2) {
+        const key = req.rawHeaders[i];
+        const value = req.rawHeaders[i + 1];
+        if (/^host$/i.test(key)) continue;
+        if (/^origin$/i.test(key)) {
+          headers.push(`${key}: http://127.0.0.1:${port}`);
+          continue;
+        }
+        headers.push(`${key}: ${value}`);
+      }
+      headers.push(`Host: 127.0.0.1:${port}`);
+      tcp.write(`GET ${path.replace(/\/{2,}/g, '/')} HTTP/1.1\r\n${headers.join('\r\n')}\r\n\r\n`);
+      if (head.length > 0) tcp.write(head);
+      tcp.pipe(socket);
+      socket.pipe(tcp);
     });
   }
 
@@ -562,14 +707,23 @@ export class DashboardServer {
     this.chats.set(guestId, rows.slice(-80));
   }
 
-  private async openClawStatus(): Promise<{ gateway: boolean; model: boolean; nodes: string }> {
+  private async openClawStatus(): Promise<{ gateway: boolean; model: boolean; nodes: string; node_names: string[] }> {
     const up = await gatewayUp();
-    if (!up) return { gateway: false, model: Boolean(process.env.OPENAI_API_KEY), nodes: 'gateway down' };
+    if (!up) return { gateway: false, model: Boolean(process.env.OPENAI_API_KEY), nodes: 'gateway down', node_names: [] };
     try {
       const listed = await listNodes({ repoRoot: this.repoRoot() });
-      return { gateway: true, model: Boolean(process.env.OPENAI_API_KEY), nodes: listed.text };
+      const nodeNames = listed.nodes
+        .filter((node) => node.connected !== false)
+        .map((node) => node.displayName || '')
+        .filter(Boolean);
+      return { gateway: true, model: Boolean(process.env.OPENAI_API_KEY), nodes: listed.text, node_names: nodeNames };
     } catch (error) {
-      return { gateway: true, model: Boolean(process.env.OPENAI_API_KEY), nodes: error instanceof Error ? error.message : 'nodes unavailable' };
+      return {
+        gateway: true,
+        model: Boolean(process.env.OPENAI_API_KEY),
+        nodes: error instanceof Error ? error.message : 'nodes unavailable',
+        node_names: [],
+      };
     }
   }
 
@@ -689,7 +843,7 @@ export class DashboardServer {
     res.flushHeaders();
     const send = (event: DeskEvent) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
-      if (event.type === 'assistant' || event.type === 'error') {
+      if (event.type === 'assistant' || event.type === 'error' || event.type === 'reasoning') {
         this.remember(chatKey, { role: event.type, text: event.text || '' });
       } else if (event.type === 'action') {
         this.remember(chatKey, { role: 'action', text: event.text || event.op || '' });
@@ -701,6 +855,15 @@ export class DashboardServer {
       const fleet = planFleet(text);
       if (fleet.kind !== 'desk') {
         for await (const event of this.runFleet(fleet, target.container, target.wsUrl)) send(event);
+      } else if (codexDeskAvailable()) {
+        for await (const event of runCodexDesk({
+          message: text,
+          container: target.container,
+          repoRoot: root,
+          shotsDir: join(root, 'runs/desk-shots'),
+        })) {
+          send(event);
+        }
       } else {
         for await (const event of runNekoChat({
           message: text,
@@ -727,6 +890,12 @@ export class DashboardServer {
     if (!text) throw Object.assign(new Error('message is empty'), { status: 400 });
     if (text.length > 4000) throw Object.assign(new Error('message is too long'), { status: 400 });
     if (!this.displays.has(guestId)) throw Object.assign(new Error('guest display is not registered'), { status: 404 });
+    // A Docker/neko guest is not an SSH guest. Route its chat through the
+    // container's desk tool instead of the lume SSH path.
+    if (this.nekoTargets.has(guestId)) {
+      await this.streamNekoChat(text, guestId, res);
+      return;
+    }
     if (this.deskBusy.has(guestId)) throw Object.assign(new Error('this desktop is already working on a message'), { status: 409 });
     const link = this.guestLink(guestId);
     const root = this.repoRoot();
@@ -738,7 +907,7 @@ export class DashboardServer {
     res.flushHeaders();
     const send = (event: DeskEvent) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
-      if (event.type === 'assistant' || event.type === 'error') {
+      if (event.type === 'assistant' || event.type === 'error' || event.type === 'reasoning') {
         this.remember(guestId, { role: event.type, text: event.text || '' });
       } else if (event.type === 'action') {
         this.remember(guestId, { role: 'action', text: event.text || event.op || '' });
