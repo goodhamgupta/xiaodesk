@@ -1,63 +1,153 @@
-# Browser-use fan-out lab
+# Build your own Grokbot/Dots — MicroVM Workshop
 
-Training lab for packaging **Codex App Server** inside a guest, fanning browser-use jobs out across those guests, and scoring them with deterministic checks. The lab assumes you already know why a microVM-per-user boundary exists. It does not build a VMM, and it is not a sandbox product.
+A local workshop for building the two halves of a user-owned agent:
 
-Browser jobs use CDP (Lightpanda, or Playwright Chromium when that binary is absent). The OSWorld Calc pack is desktop work on the guest VGA screen: LibreOffice Calc, scored from the saved spreadsheet.
+1. **The agent desktop** — a per-user Linux desktop with Codex and a computer-use driver inside it, streamed to your own dashboard. This is the Grokbot/Dots-shaped part: your model, your machine, your infrastructure.
+2. **The fan-out lab** — a host queue that admits guests under a RAM budget, drives many short browser-use jobs through Codex App Server JSON-RPC, scores them with deterministic checks, and shows backpressure while the queue drains.
 
-## How this differs from OpenShell
+It is an internal training asset, not a competing sandbox product. It assumes you already know why a microVM-per-user boundary exists. It does **not** build a VMM.
 
-NVIDIA OpenShell is a sandbox product: it owns the isolation environment agents run in. This repo is an internal workshop. Isolation is a boundary you already have (microVM per user in production, a process or container per job in the lab). The material here is the stuff that sits on either side of that boundary:
+## Status at a glance
 
-- pin and launch `codex app-server` inside the guest
-- give that guest a CDP browser (Lightpanda on `127.0.0.1:9222`)
-- on the host, queue job cards, admit guests from a RAM budget, stream `thread/start` / `turn/start`, run evals, tear the guest down
+| Original goal | Status |
+| --- | --- |
+| README with architecture, Mac budgeting, OpenShell comparison, demo path | ✅ this document |
+| One scripted path: fixtures → queue → stub agents → CDP/Chromium → pass/fail + queue metrics | ✅ verified 24/24; peak 2, 22 backpressure events under `--low-ram` |
+| Onboarding, support, and booking packs with deterministic evals | ✅ verified 24/24 in stub mode |
+| Admission control limits concurrency under a low RAM budget | ✅ unit-tested; low-RAM run admits 2 guests |
+| CI-friendly tests with no Mac, VMM, or paid API | ✅ `pnpm test` (40 tests) |
+| Extension points for real Codex App Server and real microVMs | ✅ `--app-server real`, `drivers/lume`, `drivers/docker` |
+| Lightpanda CDP with documented Chromium fallback | ✅ implemented; Chromium is the default lab browser |
+| Local Grokbot/Dots-style desktop with Codex inside | ✅ neko + WebRTC + Cua Driver + two desks |
+| OSWorld-style desktop tasks | ✅ optional QEMU/lume wall, separate from the browser fan-out |
 
-No OpenShell dependency, no public-web scraping, no API key on the stub path.
+The happy-path stub demo needs no OpenAI key. The Codex desk demo uses the host Codex login described below.
+
+## Quickstart
+
+### 1. Host fan-out, no API key
+
+```bash
+./scripts/bootstrap.sh
+./scripts/run-demo.sh --driver process --low-ram --exit
+```
+
+That starts the fixture server on [http://127.0.0.1:4317](http://127.0.0.1:4317), resets SQLite, enqueues `tasks/batch-24.yaml`, runs stub agents over Playwright Chromium, scores SQL/HTTP checks, and prints:
+
+- pass/fail per job
+- queue depth and queue stats
+- peak concurrent guests
+- backpressure events
+
+For a fast smoke test:
+
+```bash
+./scripts/run-demo.sh --driver process \
+  --jobs onboarding-001,support-001,booking-008 \
+  --exit
+```
+
+### 2. Local agent desktop, WebRTC, Codex in the container
+
+Requires Podman or Docker. On this Mac the tested path is Podman.
+
+```bash
+podman build -t workshop-neko:desk -f drivers/docker/Dockerfile .
+DOCKER_BIN=podman ./scripts/boot-neko.sh
+```
+
+`boot-neko.sh` starts **two** neko desks by default:
+
+| Container | Default app | Dashboard |
+| --- | --- | --- |
+| `workshop-neko` | fixture index | `/neko/workshop-neko/` |
+| `workshop-neko-2` | Support Desk | `/neko/workshop-neko-2/` |
+
+Open the dashboard:
+
+- [http://127.0.0.1:4318](http://127.0.0.1:4318) — desk + Codex chat
+- [http://127.0.0.1:4318/vms](http://127.0.0.1:4318/vms) — both WebRTC desktops
+- [http://127.0.0.1:4318/neko/workshop-neko/](http://127.0.0.1:4318/neko/workshop-neko/) — primary stream through the dashboard proxy
+
+The desk chat runs `codex app-server` **inside** the neko container and drives the container's Cua Driver. Codex credentials are copied from the host into the container for each turn:
+
+```text
+CODEX_AUTH_JSON, or ~/.codex/auth.json → /home/neko/.codex/auth.json
+```
+
+Set `CODEX_DESK=0` to keep the local phrase planner and skip model turns.
+
+To open the fixture apps in the container and capture screenshots:
+
+```bash
+./scripts/demo-fixtures.sh
+# runs/shots/workshop-index.png
+# runs/shots/workshop-onboarding.png
+# runs/shots/workshop-support.png
+# runs/shots/workshop-booking.png
+```
+
+The desktop also has a **MicroVM Workshop** launcher that opens the fixture index in container Firefox.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  subgraph host [Host orchestrator]
+  subgraph host [Host]
     Q[Job queue]
     A[RAM admission]
     R[Fan-out runner]
     E[Deterministic evals]
     D[Dashboard CLI + SSE]
+    N[Neko WebRTC proxy]
   end
-  subgraph guest [Guest per job]
-    C[Codex App Server JSON-RPC]
+  subgraph guest [Guest per job / per user]
+    C[Codex App Server]
     S[Stub agent or real Codex]
     B[CDP browser]
+    U[Cua Driver / desktop]
   end
   F[Fixture apps + SQLite]
   Q --> A --> R
   R -->|initialize, thread/start, turn/start| C
   C --> S --> B
+  S --> U
   B -->|HTTP| F
   R --> E
   E -->|SQL and HTTP| F
   R --> D
+  D --> N -->|WebRTC| U
 ```
+
+Production shape: **one microVM per user**, with Codex App Server inside it. This lab runs **one guest per job** so a single machine can drain a queue of short tasks. The neko desk is a local, persistent guest for the agent-desktop half.
 
 | Piece | Role |
 | --- | --- |
-| `apps/fixtures` | Onboarding portal, support desk, booking app. SQLite, seed, `POST /api/reset`. |
+| `apps/fixtures` | Onboarding, support desk, booking app. SQLite, seed, `POST /api/reset`. |
 | `packages/orchestrator` | Queue, RAM admission, fan-out runner, CLI + HTML/SSE dashboard. |
-| `packages/guest-agent` | Mock app-server (`initialize`, `thread/start`, `turn/start`), CDP browser tool, scripted stub agent. |
-| `packages/evals` | DB and HTTP checkers. No LLM judge. |
-| `tasks/` | Job cards and executable evals. `batch-24.yaml` is the browser fan-out. `tasks/osworld/` mixes LibreOffice Calc and Chrome tasks from OSWorld. |
+| `packages/guest-agent` | Mock App Server (`initialize`, `thread/start`, `turn/start`), CDP browser tool, stub agent, `exec-server` shim. |
+| `packages/evals` | DB, HTTP, cookie, URL, and ODS checkers. No LLM judge. |
+| `tasks/` | Job cards and executable evals. `batch-24.yaml` is the browser fan-out. |
 | `packages/agents-api` | Local Agents API: self-hosted sessions, signed webhooks, executor WebSocket. |
-| `drivers/lume` | Default guest. `lume` on Apple Silicon (Virtualization.framework). QEMU on Linux (KVM, or TCG when nested KVM cannot boot). |
 | `drivers/process` | Fast path: one Node process per job, stdio JSON-RPC. |
-| `drivers/docker` | Neko guest. One container per Agents API session. |
+| `drivers/lume` | Default VM driver. `lume` on Apple Silicon; QEMU on Linux. |
+| `drivers/docker` | Neko guest. One container per Agents API session, plus the standing desks. |
 | `drivers/microvm` | Alias of the lume/QEMU driver. |
 
-Production pattern: **one microVM per user**, and that VM contains Codex App Server. This fan-out lab runs **one guest per job** so a single machine can drain a queue of short browser tasks. See [docs/microvm.md](docs/microvm.md) and [docs/architecture.md](docs/architecture.md).
+## How this differs from NVIDIA OpenShell
+
+OpenShell is a sandbox product: it owns the isolation environment agents run in. This repo is a workshop about the material on either side of that boundary:
+
+- pin and launch `codex app-server` inside the guest
+- give the guest a CDP browser (Lightpanda on `127.0.0.1:9222`, or the Chromium fallback)
+- run a user-owned desktop with Codex + Cua Driver inside the container
+- on the host, queue job cards, admit guests from a RAM budget, stream `thread/start` / `turn/start`, run evals, and tear the guest down
+
+There is no OpenShell dependency, no public-web scraping as the primary demo, and no API key on the stub path.
 
 ## Mac 24GB budget
 
-Lightpanda guests are small. The defaults in `createDefaultConfig` match a 24GB Apple Silicon machine:
+The defaults in `createDefaultConfig` match a 24GB Apple Silicon machine:
 
 | | |
 | --- | --- |
@@ -68,200 +158,197 @@ Lightpanda guests are small. The defaults in `createDefaultConfig` match a 24GB 
 | Memory-only ceiling | `floor(18432 / 700) = 26` |
 | Lab cap you should actually set | **20–24** concurrent guests |
 
-```bash
-./scripts/run-demo.sh --concurrency 20
-```
-
-That flag does not require Mac hardware. Here, guests are processes, so do not actually start 20 Chromium instances on a small VM. Use the low-RAM flag instead. It sets a 2000 MB budget and a 600 MB host reserve, which admits **2** guests of 700 MB and leaves the other 22 jobs queued:
+That is the arithmetic, not a command to launch 20 Chromium instances. Chromium is heavier than Lightpanda. The low-RAM flag sets a 2000 MB budget and a 600 MB host reserve, which admits **2** guests of 700 MB and leaves the rest queued:
 
 ```bash
-./scripts/run-demo.sh --low-ram --exit
+./scripts/run-demo.sh --driver process --low-ram --exit
 ```
 
 The summary prints `peak concurrent guests` and `backpressure events`. Unit tests lock the same math.
 
-## Neko desk
+## The desktop half: Grokbot/Dots locally
 
-The workshop desktop is Xfce in Docker, streamed by [neko](https://github.com/m1k1o/neko). Chat on the dashboard drives that container. The `lume` / QEMU driver is still the microVM path for the isolation lab; the desk does not boot it.
+The neko desks are the local agent-desktop artifact. Each container runs:
 
-```bash
-./scripts/boot-neko.sh
-sudo docker cp scripts/neko/setup-inside.sh workshop-neko:/tmp/setup-inside.sh
-sudo docker exec workshop-neko bash /tmp/setup-inside.sh
-```
+- Xfce on `DISPLAY=:99.0`
+- Firefox ESR for the fixture apps
+- Cua Driver as the `neko` user
+- Codex CLI in `/opt/codex`, with `codex app-server`
+- x11vnc as a VNC fallback
+- neko's WebRTC stream
 
-`scripts/boot-neko.sh` starts `workshop-neko` on [http://127.0.0.1:8341](http://127.0.0.1:8341). Sign in as `neko` / `neko` (admin / `admin`). On Linux it uses host networking; on macOS it publishes `8341`, `5930`, and the WebRTC mux ports. WebRTC is ice-lite with a UDP mux on `52100` and a TCP mux on `52151`. `NAT1TO1` is the address the viewer uses (`127.0.0.1` for a local browser; set `NEKO_NAT_IP` for a remote viewer).
+The dashboard proxies neko HTTP and WebSocket same-origin at `/neko/<container>/`, so the WebRTC client works through the dashboard port. Stock neko chrome is hidden; the dashboard owns the header, stream frame, **Take control** button, and chat.
 
-The dashboard at [http://127.0.0.1:4318](http://127.0.0.1:4318) embeds that desktop next to a chat. The stream is neko's WebRTC client, reverse-proxied same-origin at `/neko/workshop-neko/`; `/vm/workshop-neko/vnc` remains the VNC fallback. Codex runs **inside** the container and drives the container's Cua Driver. Chat turns also publish an active-window screenshot after each input action.
+The chat is SSE and shows:
 
-OpenClaw is the fleet bus. One gateway on the host at [http://127.0.0.1:18789](http://127.0.0.1:18789) owns the main chat. Each neko container runs `openclaw node run` against that gateway and publishes a `desk` MCP server (`scripts/neko/desk-mcp.py`). The main chat says `nodes`, `state of workshop-neko`, or `on <container> open the terminal`. A VM sends a line back with `tell main ...` in its chat, or `desk-tell "..."` in the container, which posts to the gateway hook `/hooks/desk`. OpenClaw remains optional; the Codex desk path does not require it.
+- streamed assistant deltas
+- collapsible reasoning summaries
+- compact MCP tool-call chips
+- active-window screenshots after input actions
+- the container's live WebRTC desktop
 
-`scripts/neko/desk-act.py` calls `cua-driver call` for pointer and keyboard, and falls back to xdotool when the daemon does not answer. The QEMU wall, when guests are booted, is [http://127.0.0.1:4318/vms](http://127.0.0.1:4318/vms).
+`NEKO_IMPLICIT_CONTROL=true` and a visible **Take control** button make the stream directly usable without hunting for neko's tiny control icon.
 
-Cua Driver is installed for the `neko` user. `cua-driver serve` runs in that session on `DISPLAY=:99.0`. The image registers the container-local MCP server in `/home/neko/.codex/config.toml`:
-
-```toml
-[mcp_servers.cua-driver]
-command = "/home/neko/.local/bin/cua-driver"
-args = ["mcp"]
-```
-
-The dashboard runs `codex app-server` inside the container, copies the host's `~/.codex/auth.json` in when needed, and streams assistant deltas, reasoning summaries, MCP tool calls, and active-window screenshots over SSE. The project `.codex/config.toml` is a host-side fallback that targets the container through `scripts/neko/cua-driver-mcp.sh`; the container does not use that wrapper.
+OpenClaw is **optional**. If `/opt/openclaw` exists, `boot-neko.sh` starts the host gateway and a node per container; the dashboard then reports "OpenClaw node" for that desktop. Without it, the same desks work with the in-container Codex path.
 
 ## Docker / Podman on macOS
 
-The neko image is built locally and carries Linux Node, Playwright Chromium,
-the real Codex CLI, and Cua Driver:
+The image is self-contained: Linux Node 22, Playwright Chromium, pinned Codex `0.167.1` (including `codex-code-mode-host`), Cua Driver `0.47.5`, Firefox, AT-SPI, and x11vnc.
 
 ```bash
 podman build -t workshop-neko:desk -f drivers/docker/Dockerfile .
-./scripts/boot-neko.sh
+DOCKER_BIN=podman ./scripts/boot-neko.sh
 ```
 
-`boot-neko.sh` detects Podman when Docker is absent and publishes `8341`, `5930`,
-the WebRTC UDP mux, and the TCP mux instead of using host networking. The
-dashboard proxies neko HTTP/WebSocket at `/neko/<container>/`, so the WebRTC
-client works through the dashboard port. By default it starts two desks so the
-wall always has two live VMs:
+macOS uses published ports instead of `--network host`:
 
-```text
-workshop-neko    -> /neko/workshop-neko/    fixture index
-workshop-neko-2  -> /neko/workshop-neko-2/  Support Desk
-```
+- `8341` / `5930` primary desk
+- `8342` / `5931` secondary desk
+- per-desk WebRTC UDP/TCP mux ports
 
-Use `NEKO_SECONDARY=0` for one desk, or override the second app with
-`WORKSHOP_SECONDARY_FIXTURES_APP=/booking`. The dashboard top bar has a
-prominent **Take control** button; neko runs with implicit control, so clicking
-straight into the stream also works. The stock neko chrome is hidden in the
-iframe.
-
-The per-job driver does the same:
+For a per-job Docker evaluation:
 
 ```bash
 DOCKER_BIN=podman \
 AGENTS_PUBLIC_HOST=host.docker.internal \
-./scripts/run-demo.sh --driver docker --jobs onboarding-001 --concurrency 1 --exit
+./scripts/run-demo.sh --driver docker \
+  --jobs onboarding-001,support-001,booking-008 \
+  --concurrency 1 --exit
 ```
 
-Codex runs inside the container. The dashboard only needs the host Codex CLI to
-copy auth and speak stdio. It uses `~/.codex/auth.json` by default. To disable
-model turns and keep the local phrase planner:
+Inside the image, `/usr/local/bin/codex` is the real CLI. `/workspace/bin/codex` remains the lab `exec-server` shim; do not replace it.
 
-```bash
-CODEX_DESK=0 pnpm exec tsx scripts/serve-dashboard.ts
-```
-
-The container desktop has a **MicroVM Workshop** launcher. It opens
-`http://host.docker.internal:4317/` on macOS (or `127.0.0.1` on Linux) in the
-container's Firefox. To open the index and each app and capture a screenshot:
-
-```bash
-./scripts/demo-fixtures.sh
-# runs/shots/workshop-index.png
-# runs/shots/workshop-onboarding.png
-# runs/shots/workshop-support.png
-# runs/shots/workshop-booking.png
-```
-
-Inside the image, `/usr/local/bin/codex` is the real CLI (pinned in the
-Dockerfile with its SHA256). `/workspace/bin/codex` remains the lab
-`exec-server` shim. Do not replace it.
-
-The repo pins Node 22 through `.tool-versions`. Install the host Codex CLI into
-that same Node so the dashboard can spawn it:
+The repo pins Node 22 through `.tool-versions`. Install the host Codex CLI into that same Node so the dashboard can spawn it:
 
 ```bash
 npm install -g @openai/codex@0.167.1
 codex --version
 ```
 
-## Run the demo
+If Docker is available instead of Podman, use `DOCKER_BIN=docker`.
 
-The default driver is `lume`: a real guest VM and a local Agents API control plane. It does not need an OpenAI key. Build the Debian image once, then run a short VM batch (a guest is ~1.5 GB, so the default cap is 1):
+## Host fan-out demo
+
+The default CLI driver is `lume`: a real guest VM plus the local Agents API control plane. It does not need an OpenAI key.
 
 ```bash
 ./scripts/bootstrap.sh
 ./scripts/build-guest-image.sh
-./scripts/run-demo.sh --driver lume --jobs onboarding-001,support-001,booking-008 --concurrency 1 --exit
+./scripts/run-demo.sh --driver lume \
+  --jobs onboarding-001,support-001,booking-008 \
+  --concurrency 1 --exit
 ```
 
-The 24-job fan-out stays on the process driver. That path is the one that fits a small machine:
+The 24-job fan-out is designed for the process driver:
 
 ```bash
 ./scripts/run-demo.sh --driver process --low-ram --exit
 ```
 
-What that does:
+What happens:
 
-1. Starts the fixture server on [http://127.0.0.1:4317](http://127.0.0.1:4317) if it is not already up.
+1. Start fixtures on `http://127.0.0.1:4317` if needed.
 2. `POST /api/reset` so every run sees the same venues, tickets, and empty users.
-3. Enqueues the 24 job cards in `tasks/batch-24.yaml`.
-4. Admits guests up to the RAM cap. `lume` boots a VM, the webhook worker starts `codex exec-server`, and the stub drives Playwright Chromium inside the guest. `--driver process` skips the VM and speaks app-server JSON-RPC to a local Node process.
-5. Scores each job against SQLite and the fixture HTTP API.
-6. Prints pass/fail, queue stats, peak concurrency, and backpressure. The HTML dashboard is [http://127.0.0.1:4318](http://127.0.0.1:4318). `/` is the neko desk and chat. `/vms` is the QEMU or lume VGA wall (noVNC) when those guests are booted. Add `--exit` to stop when the queue drains; omit it to leave the dashboard serving.
+3. Enqueue the 24 cards from `tasks/batch-24.yaml`.
+4. Admit guests up to the RAM cap.
+   - `lume`: boot a VM, start `codex exec-server`, drive the stub against Chromium inside the guest.
+   - `process`: skip the VM and speak App Server JSON-RPC to a local Node process.
+   - `docker`: create a neko container per Agents API session.
+5. Score against SQLite and fixture HTTP.
+6. Print results, queue stats, peak concurrency, and backpressure.
 
 Useful slices:
 
 ```bash
-./scripts/run-demo.sh --driver process --jobs onboarding-001,support-001,booking-008 --exit
-./scripts/run-demo.sh --driver process --browser lightpanda --exit   # falls back to Chromium unless Lightpanda is actually up
-./scripts/run-demo.sh --driver process --app-server real --exit      # spawns `codex app-server`; needs a pinned binary
+./scripts/run-demo.sh --driver process \
+  --jobs onboarding-001,support-001,booking-008 --exit
+
+./scripts/run-demo.sh --driver process --browser lightpanda --exit
+# falls back to Chromium unless Lightpanda is actually up
+
+ALLOW_CHROMIUM_FALLBACK=false ./scripts/run-demo.sh \
+  --driver process --browser lightpanda --exit
+
+./scripts/run-demo.sh --driver process --app-server real --exit
+# spawns `codex app-server`; needs a pinned host binary
+
 ./scripts/reset-fixtures.sh
 pnpm test
 ```
 
 ## Task packs
 
-Job cards live in `tasks/*.yaml`. A pass is a row, a joined query, or a JSON API body. Nothing is graded by a model.
+Job cards live in `tasks/*.yaml`. A pass is a row, a joined query, a file, a cookie, or a JSON API body. Nothing is graded by a model.
 
 | Pack | Pass condition |
 | --- | --- |
-| Portal onboarding | User row for that persona (name, plan, terms timestamp), a session row, a `welcome-guide.pdf` download row. |
+| Portal onboarding | User row for the persona (name, plan, terms timestamp), a session row, and a `welcome-guide.pdf` download row. |
 | Ticket triage | Status, tags, assignee, and reply body match the gold values on that `ticket_id`. |
-| Constrained booking | Reservation for that guest matches date, party size, accessibility, and `price_per_hour`. |
-| OSWorld Calc | ODS uploaded by the guest. Formulas, cached values, frozen header, and currency or percent styles must match `tasks/osworld/calc-*.json`. |
-| OSWorld Chrome | The same gold as the onboarding, support, and booking packs, driven in headed Chrome on the guest desktop. |
-| OSWorld workflow | One guest does Chrome (GDPR ticket) and then Calc (invoice). This is the multi-app slice. It boots only when RAM remains after the single-app guests. |
+| Constrained booking | Reservation for the guest matches date, party size, accessibility, and `price_per_hour`. |
+| OSWorld Calc | ODS uploaded by the guest. Formulas, cached values, frozen header, and currency/percent styles match `tasks/osworld/calc-*.json`. |
+| OSWorld Chrome | The same fixture gold, driven in headed Chrome on the guest desktop. |
+| OSWorld workflow | One guest does Chrome (GDPR ticket) then Calc (invoice). |
 
-[OSWorld](https://github.com/xlang-ai/OSWorld) Ubuntu is 369 tasks: about 73% single-app and 27% multi-app workflows. Chrome and LibreOffice are the two apps this guest image can actually run, and they are the Daily and Office categories (the same split trycua's [OSWorld-Verified](https://huggingface.co/datasets/hud-evals/OSWorld-Verified) set uses). The wall is three Chrome tasks and three Calc tasks, alternating, then `flow-triage` if the host still has room. Calc checks are SUM, SUMIF, nested IF, a second sheet, number formats, and a frozen header. Chrome checks are the fixture rows. The task and the execution check are the benchmark, not an LLM judge.
+`booking-008` loads a slot, marks it sold out, submits, sees `slot_unavailable`, backs off, and books the next valid slot. The host queue is the other backoff: jobs wait while admission is closed.
 
-Each wall guest is one app-server turn. `scripts/boot-osworld-wall.sh` copies `scripts/guest/app-server.mjs` into the guest and `scripts/drive-guest-turn.mjs` holds SSH across `initialize`, the `initialized` notification, `thread/start`, and `turn/start` until `turn/completed`. That guest process is a mock: this image has no `codex` binary and the lab takes no API key. On `turn/start` the mock runs the headed tool for that card (Chrome CDP, LibreOffice UNO, or both for a workflow). Solver output stays on `/tmp/osworld.log`; stdout is JSON-RPC only. `CODEX_BIN` / `--app-server real` is still the swap to `codex app-server`, and those evals stay red until a browser or calc tool is registered.
-
-On this Linux host the guests are QEMU TCG. Nested KVM does not boot. A 1024MB Calc guest measured about 1.9GB of host RSS. Chrome guests are given 1280MB. The wall script subtracts that prediction from available memory and stops the last guest if available memory falls under 700MB:
-
-```bash
-./scripts/boot-osworld-wall.sh
-```
-
-Framebuffers show up on the dashboard. `scripts/paint-wall.sh` opens that guest's Chrome page or Calc sheet as soon as SSH is up and leaves the window mapped; the browser solver no longer closes Chrome when the turn ends, so the tile does not fall back to the empty `#0b1020` desktop. The neko tile is an XFCE session. Its launcher dock (browser, files, terminal) is the real `xfce4-panel`, collapsed until the pointer hits that edge. The QEMU tiles are Openbox, so they do not have that panel. Click a screen to type. Double-click the title, or press Chat, and the framebuffer fills the stage next to a desk chat. A message there is a desktop turn: the host plans Chrome, xterm, or the file browser, then `scripts/guest/desk-act.mjs` types and clicks on `DISPLAY=:0`. Record writes `runs/recordings/*.mp4` (one guest at a time, 10 fps, libx264 CRF 16) and the page replays them. Snapshot and Restore send `savevm` / `loadvm` over the guest's QMP socket (`runs/vm-control.json`), which pauses the guest while QEMU writes memory and the qcow2 overlay. `scripts/grade-osworld.ts` scores ODS artifacts and the Chrome fixture rows.
-
-`booking-008` loads a slot, marks it sold out, submits, gets `slot_unavailable`, backs off, and books the next slot that still satisfies the constraints. The host queue is the other backoff: jobs sit in the queue while admission is closed.
+The OSWorld wall is optional. It runs three Chrome tasks and three Calc tasks, alternating, then `flow-triage` when RAM remains. Guests are QEMU TCG on Linux (`boot-osworld-wall.sh`); a Mac uses `lume` / Virtualization.framework. The wall is separate from the browser-use fan-out and from the WebRTC desk.
 
 ## Real Codex and real microVMs
 
-- [docs/codex-app-server.md](docs/codex-app-server.md) — pin `codex app-server`, the JSON-RPC messages the mock implements, `--app-server real`.
-- [docs/lightpanda.md](docs/lightpanda.md) — glibc guest, `LIGHTPANDA_DISABLE_TELEMETRY=true`, CDP on 9222, Chromium fallback.
-- [docs/agents-api.md](docs/agents-api.md) — session lifecycle, webhooks, `codex exec-server`.
-- [docs/microvm.md](docs/microvm.md) — lume / Virtualization.framework on a Mac, QEMU on Linux.
+- **Process driver, real App Server:** `--app-server real` or `CODEX_BIN=/path/to/codex`.
+- **Neko desk:** Codex `0.167.1` is installed in the image and runs inside the container; the dashboard copies host auth per turn.
+- **Lume / QEMU guests:** `codex exec-server` with the local Agents API lifecycle.
+- **Lab `exec-server` shim:** `bin/codex`; it speaks the lab's small JSON command channel, not the real Noise relay. Do not overwrite it.
+- **Lightpanda:** glibc guest, `LIGHTPANDA_DISABLE_TELEMETRY=true`, CDP on `127.0.0.1:9222`. Chromium is the documented fallback and the default lab browser. This is **browser-use over CDP**, not the OSWorld screenshot→click loop for the fan-out packs.
+
+Docs:
+
+- [docs/codex-app-server.md](docs/codex-app-server.md) — pin `codex app-server`, JSON-RPC handshake, mock vs real.
+- [docs/lightpanda.md](docs/lightpanda.md) — glibc, CDP, telemetry, Chromium fallback.
+- [docs/agents-api.md](docs/agents-api.md) — sessions, webhooks, `codex exec-server`.
+- [docs/microvm.md](docs/microvm.md) — lume / Virtualization.framework, QEMU, Docker.
+- [docs/architecture.md](docs/architecture.md) — control loop.
 - [docs/demo-script.md](docs/demo-script.md) — 30–45 minute walkthrough.
 - [docs/lab-brief.md](docs/lab-brief.md) — one-page brief.
 
+## Tests and CI
+
+```bash
+pnpm install
+pnpm test
+pnpm run typecheck
+```
+
+Covered:
+
+- admission math and the fan-out cap under a 2-guest budget
+- DB/API/ODS checkers
+- webhook signatures and Agents API lifecycle
+- docker neko container arguments
+- wall-turn stub behavior
+
+No Mac, VMM, browser binary in CI, or paid API is required for the test suite.
+
+## Non-goals
+
+- Do not build a full VMM.
+- Do not depend on NVIDIA OpenShell.
+- Do not make public-web scraping the primary demo.
+- Do not require secrets for the stub happy path.
+- Do not grade tasks with an LLM.
+- Do not pretend the Docker neko driver is a generic microVM replacement.
+
 ## Layout
 
+```text
+apps/fixtures/            three portals + SQLite + seed/reset
+packages/orchestrator/    queue, admission, runner, dashboard
+packages/guest-agent/     mock app-server, browser tool, stub agent, exec-server
+packages/agents-api/      local Agents API control plane
+packages/evals/           deterministic checkers
+tasks/                    job cards, batch-24, OSWorld packs
+drivers/                  process, lume, docker/neko, microvm alias
+scripts/                  bootstrap, run-demo, boot-neko, demo-fixtures
+scripts/neko/             desk image helpers, Cua wrapper, OpenClaw node
+.codex/config.toml        optional host-side Codex MCP registration
 ```
-apps/fixtures/          three portals + SQLite
-packages/orchestrator/  queue, admission, runner, dashboard
-packages/guest-agent/   mock app-server, browser tool, stub agent, exec-server
-packages/agents-api/    local Agents API control plane
-packages/evals/         deterministic checkers
-tasks/                  job cards + batch-24
-drivers/                lume (microVM), process, docker, microvm alias
-scripts/neko/           cua-driver MCP wrapper and in-container desk actions
-.codex/config.toml      Codex MCP registration for the neko driver
-scripts/                bootstrap, run-demo, reset-fixtures
-docs/                   workshop writeups
-```
-
-## Tests
-
-`pnpm test` covers admission math, the fan-out cap under a 2-guest budget, the DB/API checkers, webhook signatures, and the Agents API lifecycle (connect timeout, delete-does-not-stop, idle-does-not-stop, executor key scope). No Mac and no paid API. `./scripts/build-guest-image.sh` then `./scripts/run-demo.sh --driver lume` is the VM end-to-end check.
