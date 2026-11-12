@@ -5,8 +5,12 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 name="${NEKO_NAME:-workshop-neko}"
 
 docker_cmd() {
-  if docker info >/dev/null 2>&1; then
+  if [[ -n "${DOCKER_BIN:-}" ]]; then
+    $DOCKER_BIN "$@"
+  elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     docker "$@"
+  elif command -v podman >/dev/null 2>&1; then
+    podman "$@"
   else
     sudo -n docker "$@"
   fi

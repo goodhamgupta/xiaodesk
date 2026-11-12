@@ -33,18 +33,22 @@ if [[ -z "$token" ]]; then
   echo "gateway token missing. Run scripts/openclaw-up.sh on the host first." >&2
   exit 1
 fi
+gateway_url="${OPENCLAW_GATEWAY_URL:-ws://127.0.0.1:18789}"
+gateway_hostport="${gateway_url#ws://}"
+gateway_hostport="${gateway_hostport%%/*}"
 if [[ -f /workspace/runs/openclaw/hook.token ]]; then
   install -o neko -g neko -m 600 /workspace/runs/openclaw/hook.token /home/neko/.openclaw/hook.token
 elif [[ -f /tmp/openclaw-hook.token ]]; then
   install -o neko -g neko -m 600 /tmp/openclaw-hook.token /home/neko/.openclaw/hook.token
 fi
-python3 - "$token" <<'PY'
+python3 - "$token" "$gateway_url" <<'PY'
 import json, sys
 token = sys.argv[1].strip()
+gateway_url = sys.argv[2].strip()
 cfg = {
     "gateway": {
         "mode": "remote",
-        "remote": {"url": "ws://127.0.0.1:18789", "token": token},
+        "remote": {"url": gateway_url, "token": token},
     },
     "nodeHost": {
         "mcp": {
@@ -72,5 +76,5 @@ ps -u neko -o pid=,args= | awk '/entry.js node run/ {print $1}' | while read -r 
   kill "$pid" 2>/dev/null || true
 done
 sleep 0.4
-echo "openclaw node ${name} -> ws://127.0.0.1:18789"
-exec su -s /bin/bash neko -c "export HOME=/home/neko DISPLAY=${display} XDG_RUNTIME_DIR=/tmp/runtime-neko OPENCLAW_STATE_DIR=/home/neko/.openclaw OPENCLAW_CONFIG_PATH=/home/neko/.openclaw/openclaw.json OPENCLAW_NODE_NAME=${name}; mkdir -p \"\$XDG_RUNTIME_DIR\"; exec ${claw} node run --host 127.0.0.1 --port 18789 --display-name ${name} --no-tls >>/tmp/openclaw-node.log 2>&1"
+echo "openclaw node ${name} -> ${gateway_url}"
+exec su -s /bin/bash neko -c "export HOME=/home/neko DISPLAY=${display} XDG_RUNTIME_DIR=/tmp/runtime-neko OPENCLAW_STATE_DIR=/home/neko/.openclaw OPENCLAW_CONFIG_PATH=/home/neko/.openclaw/openclaw.json OPENCLAW_NODE_NAME=${name} OPENCLAW_GATEWAY_URL=${gateway_url}; mkdir -p \"\$XDG_RUNTIME_DIR\"; exec ${claw} node run --host ${gateway_hostport%:*} --port ${gateway_hostport##*:} --display-name ${name} --no-tls >>/tmp/openclaw-node.log 2>&1"

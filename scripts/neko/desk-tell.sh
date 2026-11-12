@@ -20,12 +20,13 @@ if [[ ! -f "$token_file" ]]; then
   echo "openclaw hook token is missing ($token_file). Start the gateway with scripts/openclaw-up.sh." >&2
   exit 1
 fi
-python3 - "$from" "$text" "$(cat "$token_file")" <<'PY'
+gateway_url="${OPENCLAW_GATEWAY_URL:-http://127.0.0.1:18789}"
+python3 - "$from" "$text" "$(cat "$token_file")" "$gateway_url" <<'PY'
 import json, sys, urllib.request
-from_name, text, token = sys.argv[1], sys.argv[2], sys.argv[3].strip()
+from_name, text, token, gateway_url = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4].strip()
 body = json.dumps({"from": from_name, "text": text}).encode()
 req = urllib.request.Request(
-    "http://127.0.0.1:18789/hooks/desk",
+    gateway_url.rstrip("/") + "/hooks/desk",
     data=body,
     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
     method="POST",

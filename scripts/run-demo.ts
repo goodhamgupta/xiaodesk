@@ -137,7 +137,7 @@ async function main(): Promise<void> {
   const dashboard = hasFlag('--no-dashboard') ? null : new DashboardServer(DASHBOARD_PORT);
   dashboard?.start();
   const displayHooks = {
-    onDisplay: (info: { guestId: string; vncPort?: number; vncPassword?: string; jobName?: string; nekoUrl?: string; container?: string }) => {
+    onDisplay: (info: { guestId: string; vncPort?: number; vncPassword?: string; jobName?: string; nekoUrl?: string; httpPort?: number; container?: string }) => {
       dashboard?.registerDisplay(info);
     },
     onDisplayEnd: (guestId: string) => {

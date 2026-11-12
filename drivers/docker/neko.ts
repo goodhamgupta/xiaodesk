@@ -8,6 +8,8 @@ export interface NekoDisplayInfo {
   guestId: string;
   jobName?: string;
   nekoUrl: string;
+  httpPort?: number;
+  vncPort?: number;
   container: string;
 }
 
@@ -21,11 +23,12 @@ export interface NekoRunSpec {
   image: string;
   bind: string;
   natIp: string;
+  httpPort: number;
+  vncPort: number;
   udpMux: number;
   tcpMux: number;
   display: string;
   repoRoot: string;
-  nodePath: string;
 }
 
 const PREFERRED_IMAGE = 'workshop-neko:desk';
@@ -38,17 +41,33 @@ export function nekoContainerName(environmentId: string): string {
 
 export function nekoRunArgs(spec: NekoRunSpec): string[] {
   const epr = `${spec.udpMux}-${spec.udpMux + 8}`;
+  const mac = process.platform === 'darwin';
+  // Docker Desktop and Podman Machine do not give a Linux container the
+  // macOS loopback. Publish ports on the Mac instead of using host networking.
+  const network = mac
+    ? [
+        '-p', `127.0.0.1:${spec.httpPort}:${spec.httpPort}`,
+        '-p', `127.0.0.1:${spec.vncPort}:${spec.vncPort}`,
+        '-p', `0.0.0.0:${spec.udpMux}:${spec.udpMux}/udp`,
+        '-p', `0.0.0.0:${spec.tcpMux}:${spec.tcpMux}/tcp`,
+      ]
+    : ['--network', 'host'];
+  const bind = mac ? `0.0.0.0:${spec.httpPort}` : spec.bind;
+  const natIp = mac ? (process.env.NEKO_NAT_IP || '127.0.0.1') : spec.natIp;
+  const openclaw = existsSync('/opt/openclaw') ? ['-v', '/opt/openclaw:/opt/openclaw:ro'] : [];
   return [
     'run', '-d',
     '--name', spec.name,
-    '--network', 'host',
+    ...network,
     '--shm-size', '2g',
-    '-v', `${spec.repoRoot}:/workspace`,
-    '-v', `${spec.nodePath}:/usr/local/bin/node:ro`,
-    '-v', '/opt/openclaw:/opt/openclaw:ro',
+    ...openclaw,
     '-e', `OPENCLAW_NODE_NAME=${spec.name}`,
+    '-e', `OPENCLAW_GATEWAY_URL=${process.env.OPENCLAW_GATEWAY_URL || 'ws://host.docker.internal:18789'}`,
     '-e', `DISPLAY=${spec.display}`,
-    '-e', `NEKO_SERVER_BIND=${spec.bind}`,
+    '-e', `NEKO_SERVER_BIND=${bind}`,
+    '-e', `NEKO_SERVER_PATH_PREFIX=/neko/${spec.name}`,
+    '-e', `WORKSHOP_FIXTURES_URL=${process.env.WORKSHOP_FIXTURES_URL || (mac ? 'http://host.docker.internal:4317' : 'http://127.0.0.1:4317')}`,
+    '-e', `NEKO_VNC_PORT=${spec.vncPort}`,
     '-e', 'NEKO_DESKTOP_SCREEN=1280x800@30',
     '-e', 'NEKO_MEMBER_MULTIUSER_USER_PASSWORD=neko',
     '-e', 'NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD=admin',
@@ -57,17 +76,21 @@ export function nekoRunArgs(spec: NekoRunSpec): string[] {
     '-e', `NEKO_WEBRTC_TCPMUX=${spec.tcpMux}`,
     '-e', 'NEKO_WEBRTC_ICELITE=true',
     '-e', 'NEKO_WEBRTC_ICETRICKLE=false',
-    '-e', `NEKO_WEBRTC_NAT1TO1=${spec.natIp}`,
+    '-e', `NEKO_WEBRTC_NAT1TO1=${natIp}`,
     '-e', 'NEKO_WEBRTC_ICESERVERS_FRONTEND=[]',
     '-e', 'NEKO_WEBRTC_ICESERVERS_BACKEND=[]',
     '-e', 'NEKO_SESSION_COOKIE_SECURE=false',
+    '-e', 'NEKO_IMPLICIT_CONTROL=true',
+    '-e', 'NEKO_CONTROL_PROTECTION=false',
+    '-e', `CUA_DRIVER_PERMISSION_MODE=${process.env.CUA_DRIVER_PERMISSION_MODE || 'unrestricted'}`,
     spec.image,
   ];
 }
 
 export function resolveNekoImage(listed: string[], override = process.env.NEKO_IMAGE): string {
   if (override) return override;
-  if (listed.includes(PREFERRED_IMAGE)) return PREFERRED_IMAGE;
+  const preferred = listed.find((row) => row === PREFERRED_IMAGE || row.endsWith(`/${PREFERRED_IMAGE}`));
+  if (preferred) return preferred;
   return FALLBACK_IMAGE;
 }
 
@@ -101,9 +124,9 @@ export class NekoBackend {
   private names = new Map<string, { container: string; guestId: string }>();
   private dockerPrefix: string[] | null = null;
   private nextHttp = 8361;
+  private nextVnc = 5960;
   private nextUdp = 53200;
   private nextTcp = 53300;
-  private nextDisplay = 120;
 
   constructor(
     private root: string,
@@ -121,6 +144,10 @@ export class NekoBackend {
     this.names.delete(environmentId);
     if (row) this.hooks.onDisplayEnd?.(row.guestId);
     if (!row) return;
+    if (process.env.KEEP_GUEST_CONTAINERS === '1') {
+      console.log(`keeping neko ${row.container} (KEEP_GUEST_CONTAINERS=1)`);
+      return;
+    }
     const docker = await this.docker();
     const removed = await this.dockerRun(docker, ['rm', '-f', row.container]);
     if (removed.code !== 0 && !/no such container/i.test(removed.stderr)) {
@@ -137,10 +164,11 @@ export class NekoBackend {
     const image = resolveNekoImage(listed.stdout.split('\n').map((line) => line.trim()).filter(Boolean));
     const name = nekoContainerName(id);
     const httpPort = this.nextHttp++;
+    const vncPort = this.nextVnc++;
     const udpMux = this.nextUdp;
     this.nextUdp += 10;
     const tcpMux = this.nextTcp++;
-    const display = `:${this.nextDisplay++}.0`;
+    const display = ':99.0';
     const bind = `127.0.0.1:${httpPort}`;
     const natIp = await this.natIp();
     const job = session.metadata.job as { name?: string } | undefined;
@@ -153,22 +181,31 @@ export class NekoBackend {
       image,
       bind,
       natIp,
+      httpPort,
+      vncPort,
       udpMux,
       tcpMux,
       display,
       repoRoot: this.root,
-      nodePath: process.execPath,
     }));
     if (started.code !== 0) {
       throw new Error(`docker run ${name} failed: ${started.stderr || started.stdout}`);
     }
-    console.log(`neko ${id} container=${name} http://${bind} udp=${udpMux} tcp=${tcpMux} nat=${natIp} image=${image}`);
+    console.log(`neko ${id} container=${name} http://${bind} vnc=http://127.0.0.1:${vncPort} udp=${udpMux} tcp=${tcpMux} nat=${natIp} image=${image}`);
     try {
       if (this.stopping.has(id)) throw new Error(`environment ${id} stopped during boot`);
-      await this.waitForHttp(`http://${bind}/`, 90_000);
+      await this.waitForHttp(`http://${bind}/neko/${name}/`, 90_000);
       await this.installSkin(docker, name);
-      const nekoUrl = `http://${bind}/?usr=neko&pwd=neko`;
-      this.hooks.onDisplay?.({ guestId, jobName: job?.name, nekoUrl, container: name });
+      // The dashboard proxies neko's HTTP/WebSocket on its own origin and
+      // embeds the WebRTC client. Keep the VNC port for the fallback bridge.
+      this.hooks.onDisplay?.({
+        guestId,
+        jobName: job?.name,
+        nekoUrl: `/neko/${name}/?usr=neko&pwd=neko&embed=1`,
+        httpPort,
+        vncPort,
+        container: name,
+      });
       await this.startExecutor(docker, name, session, executorKey, display);
       await this.waitForRegistered(docker, name, 45_000);
       await this.startOpenClaw(docker, name, display);
@@ -194,8 +231,12 @@ export class NekoBackend {
   }
 
   private async startExecutor(docker: string[], name: string, session: AgentSession, executorKey: string, display: string): Promise<void> {
-    const fixtures = String(session.metadata.fixtures_url || 'http://127.0.0.1:4317');
+    const fixtures = this.containerUrl(String(session.metadata.fixtures_url || 'http://127.0.0.1:4317'));
+    // The server sends metadata.fixtures_url in the run_job command, and
+    // exec-server prefers the command field over the process env.
+    session.metadata.fixtures_url = fixtures;
     const browserMode = String(session.metadata.browser_mode || 'chromium');
+    const headless = process.env.BROWSER_HEADLESS || 'false';
     const command = [
       'exec /workspace/bin/codex exec-server',
       `--remote ${shellQuote(session.environment.remote_url)}`,
@@ -209,9 +250,11 @@ export class NekoBackend {
       '-e', `CODEX_API_KEY=${executorKey}`,
       '-e', `DISPLAY=${display}`,
       '-e', 'PATH=/usr/local/bin:/usr/bin:/bin',
+      '-e', 'HOME=/root',
       '-e', `FIXTURES_URL=${fixtures}`,
       '-e', `BROWSER_MODE=${browserMode}`,
-      '-e', 'BROWSER_HEADLESS=true',
+      '-e', `BROWSER_HEADLESS=${headless}`,
+      ...(process.env.OPENAI_API_KEY ? ['-e', `OPENAI_API_KEY=${process.env.OPENAI_API_KEY}`] : []),
       name,
       'sh', '-lc', command,
     ]);
@@ -226,6 +269,7 @@ export class NekoBackend {
       'exec', '-d',
       '-u', 'root',
       '-e', `OPENCLAW_NODE_NAME=${name}`,
+      '-e', `OPENCLAW_GATEWAY_URL=${process.env.OPENCLAW_GATEWAY_URL || 'ws://host.docker.internal:18789'}`,
       '-e', `DISPLAY=${display}`,
       name,
       'bash', '/workspace/scripts/neko/openclaw-node.sh',
@@ -265,9 +309,23 @@ export class NekoBackend {
 
   private async natIp(): Promise<string> {
     if (process.env.NEKO_NAT_IP) return process.env.NEKO_NAT_IP;
+    // Podman Machine / Docker Desktop publish ports to the Mac. The browser
+    // and the ICE candidate use loopback, not the Linux host network.
+    if (process.platform === 'darwin') return '127.0.0.1';
     const route = await run('ip', ['-4', 'route', 'get', '1.1.1.1']);
     const match = route.stdout.match(/\bsrc\s+(\d+\.\d+\.\d+\.\d+)/);
     return match?.[1] || '127.0.0.1';
+  }
+
+  private containerHost(): string {
+    if (process.env.CONTAINER_HOST) return process.env.CONTAINER_HOST;
+    if (process.env.AGENTS_PUBLIC_HOST) return process.env.AGENTS_PUBLIC_HOST;
+    return process.platform === 'darwin' ? 'host.docker.internal' : '127.0.0.1';
+  }
+
+  private containerUrl(url: string): string {
+    if (process.platform !== 'darwin') return url;
+    return url.replace(/\/\/(?:127\.0\.0\.1|localhost):/, `//${this.containerHost()}:`);
   }
 
   private async docker(): Promise<string[]> {

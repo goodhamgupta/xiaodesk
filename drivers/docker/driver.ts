@@ -53,7 +53,7 @@ export class DockerGuestDriver {
   }
 
   private async bootControlPlane(): Promise<void> {
-    const publicHost = this.options.publicHost || '127.0.0.1';
+    const publicHost = this.options.publicHost || process.env.AGENTS_PUBLIC_HOST || (process.platform === 'darwin' ? 'host.docker.internal' : '127.0.0.1');
     const backend = new NekoBackend(repoRoot, {
       onDisplay: (info) => this.options.onDisplay?.(info),
       onDisplayEnd: (guestId) => this.options.onDisplayEnd?.(guestId),
