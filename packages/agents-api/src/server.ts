@@ -60,9 +60,9 @@ export class AgentsApiServer {
       port: options.port ?? 0,
       host: options.host ?? '0.0.0.0',
       publicHost: options.publicHost,
-      appKey: options.appKey || process.env.OPENAI_API_KEY || LAB_APP_KEY,
-      executorKey: options.executorKey || process.env.OPENAI_EXECUTOR_API_KEY || LAB_EXECUTOR_KEY,
-      webhookSecret: options.webhookSecret || process.env.OPENAI_WEBHOOK_SECRET || LAB_WEBHOOK_SECRET,
+      appKey: options.appKey || process.env.AGENTS_APP_KEY || LAB_APP_KEY,
+      executorKey: options.executorKey || process.env.AGENTS_EXECUTOR_KEY || process.env.OPENAI_EXECUTOR_API_KEY || LAB_EXECUTOR_KEY,
+      webhookSecret: options.webhookSecret || process.env.AGENTS_WEBHOOK_SECRET || process.env.OPENAI_WEBHOOK_SECRET || LAB_WEBHOOK_SECRET,
       connectionWaitMs: options.connectionWaitMs ?? 300_000,
       webhookUrl: options.webhookUrl,
     };
