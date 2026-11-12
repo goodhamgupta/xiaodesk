@@ -13,7 +13,7 @@ One guest per job. The host still owns the queue, RAM admission, evals, and tear
 | `drivers/lume` | Default. Apple Silicon uses the `lume` CLI, which drives Virtualization.framework. Linux uses QEMU. KVM when a probe actually reaches SeaBIOS; this workspace's nested KVM faults (`kvm_spurious_fault`), so the image build records `images/qemu-accel` as `tcg` and guests boot with TCG. |
 | `drivers/microvm` | Same class as `lume`. The old throw-stub is gone. |
 | `drivers/process` | Fast path. One Node process, stdio JSON-RPC, no VM. Use this for the 24-job fan-out on a small machine. |
-| `drivers/docker` | Optional Debian skeleton. Refuses to pretend a container started until `DOCKER_GUEST_IMAGE` is set. |
+| `drivers/docker` | Neko desktop container. Linux uses host networking; macOS publishes HTTP/VNC ports. |
 
 ```bash
 ./scripts/build-guest-image.sh          # Debian 12 + Node 22 + Chromium libs, once

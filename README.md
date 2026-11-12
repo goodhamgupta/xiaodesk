@@ -90,22 +90,90 @@ sudo docker cp scripts/neko/setup-inside.sh workshop-neko:/tmp/setup-inside.sh
 sudo docker exec workshop-neko bash /tmp/setup-inside.sh
 ```
 
-`scripts/boot-neko.sh` starts `workshop-neko` on the host network at [http://127.0.0.1:8341](http://127.0.0.1:8341). Sign in as `neko` / `neko` (admin / `admin`). This machine's dockerd runs with iptables off, so the container uses `--network host` and neko binds `127.0.0.1:8341` directly. WebRTC is ice-lite with a UDP mux on `52100` and a TCP mux on `52151`. `NAT1TO1` is the host address that owns that socket (the default-route IPv4, not `127.0.0.1`: pion does not bind the mux on loopback, so a loopback candidate never answers). Signaling stays on [http://127.0.0.1:8341](http://127.0.0.1:8341).
+`scripts/boot-neko.sh` starts `workshop-neko` on [http://127.0.0.1:8341](http://127.0.0.1:8341). Sign in as `neko` / `neko` (admin / `admin`). On Linux it uses host networking; on macOS it publishes `8341`, `5930`, and the WebRTC mux ports. WebRTC is ice-lite with a UDP mux on `52100` and a TCP mux on `52151`. `NAT1TO1` is the address the viewer uses (`127.0.0.1` for a local browser; set `NEKO_NAT_IP` for a remote viewer).
 
-The dashboard at [http://127.0.0.1:4318](http://127.0.0.1:4318) embeds that desktop next to a chat. A message is planned on the host (phrase matcher, no API key, no model) and executed in the container: Firefox, xfce4-terminal, Thunar, clicks, and keys.
+The dashboard at [http://127.0.0.1:4318](http://127.0.0.1:4318) embeds that desktop next to a chat. The stream is neko's WebRTC client, reverse-proxied same-origin at `/neko/workshop-neko/`; `/vm/workshop-neko/vnc` remains the VNC fallback. Codex runs **inside** the container and drives the container's Cua Driver. Chat turns also publish an active-window screenshot after each input action.
 
-OpenClaw is the fleet bus. One gateway on the host at [http://127.0.0.1:18789](http://127.0.0.1:18789) owns the main chat. Each neko container runs `openclaw node run` against that gateway and publishes a `desk` MCP server (`scripts/neko/desk-mcp.py`). The main chat says `nodes`, `state of workshop-neko`, or `on <container> open the terminal`. A VM sends a line back with `tell main ...` in its chat, or `desk-tell "..."` in the container, which posts to the gateway hook `/hooks/desk`. There is no model key in this lab, so those turns stay on the local planner and the node RPC. `openclaw agent` still needs a provider key before it can think. Bring the gateway and the desk node up with `./scripts/openclaw-up.sh`. New Agents API neko sessions mount `/opt/openclaw` and start a node named after the container.
+OpenClaw is the fleet bus. One gateway on the host at [http://127.0.0.1:18789](http://127.0.0.1:18789) owns the main chat. Each neko container runs `openclaw node run` against that gateway and publishes a `desk` MCP server (`scripts/neko/desk-mcp.py`). The main chat says `nodes`, `state of workshop-neko`, or `on <container> open the terminal`. A VM sends a line back with `tell main ...` in its chat, or `desk-tell "..."` in the container, which posts to the gateway hook `/hooks/desk`. OpenClaw remains optional; the Codex desk path does not require it.
 
 `scripts/neko/desk-act.py` calls `cua-driver call` for pointer and keyboard, and falls back to xdotool when the daemon does not answer. The QEMU wall, when guests are booted, is [http://127.0.0.1:4318/vms](http://127.0.0.1:4318/vms).
 
-Cua Driver is installed for the `neko` user. `cua-driver serve` runs in that session on `DISPLAY=:99.0`. Codex talks to it through the host wrapper, which is `docker exec -i` of `cua-driver mcp` inside the container. The project config is `.codex/config.toml`:
+Cua Driver is installed for the `neko` user. `cua-driver serve` runs in that session on `DISPLAY=:99.0`. The image registers the container-local MCP server in `/home/neko/.codex/config.toml`:
 
 ```toml
 [mcp_servers.cua-driver]
-command = "/workspace/scripts/neko/cua-driver-mcp.sh"
+command = "/home/neko/.local/bin/cua-driver"
+args = ["mcp"]
 ```
 
-With the `codex` CLI on `PATH`, the same registration is `codex mcp add cua-driver -- /workspace/scripts/neko/cua-driver-mcp.sh`. Copy `.codex/config.toml` to `~/.codex/config.toml` if you want it user-wide. The driver skill pack is `.agents/skills/cua-driver` (also linked for the `neko` user at `~/.agents/skills/cua-driver`). There is no `codex` binary in this lab image, and the chat does not pretend otherwise.
+The dashboard runs `codex app-server` inside the container, copies the host's `~/.codex/auth.json` in when needed, and streams assistant deltas, reasoning summaries, MCP tool calls, and active-window screenshots over SSE. The project `.codex/config.toml` is a host-side fallback that targets the container through `scripts/neko/cua-driver-mcp.sh`; the container does not use that wrapper.
+
+## Docker / Podman on macOS
+
+The neko image is built locally and carries Linux Node, Playwright Chromium,
+the real Codex CLI, and Cua Driver:
+
+```bash
+podman build -t workshop-neko:desk -f drivers/docker/Dockerfile .
+./scripts/boot-neko.sh
+```
+
+`boot-neko.sh` detects Podman when Docker is absent and publishes `8341`, `5930`,
+the WebRTC UDP mux, and the TCP mux instead of using host networking. The
+dashboard proxies neko HTTP/WebSocket at `/neko/<container>/`, so the WebRTC
+client works through the dashboard port. By default it starts two desks so the
+wall always has two live VMs:
+
+```text
+workshop-neko    -> /neko/workshop-neko/    fixture index
+workshop-neko-2  -> /neko/workshop-neko-2/  Support Desk
+```
+
+Use `NEKO_SECONDARY=0` for one desk, or override the second app with
+`WORKSHOP_SECONDARY_FIXTURES_APP=/booking`. The dashboard top bar has a
+prominent **Take control** button; neko runs with implicit control, so clicking
+straight into the stream also works. The stock neko chrome is hidden in the
+iframe.
+
+The per-job driver does the same:
+
+```bash
+DOCKER_BIN=podman \
+AGENTS_PUBLIC_HOST=host.docker.internal \
+./scripts/run-demo.sh --driver docker --jobs onboarding-001 --concurrency 1 --exit
+```
+
+Codex runs inside the container. The dashboard only needs the host Codex CLI to
+copy auth and speak stdio. It uses `~/.codex/auth.json` by default. To disable
+model turns and keep the local phrase planner:
+
+```bash
+CODEX_DESK=0 pnpm exec tsx scripts/serve-dashboard.ts
+```
+
+The container desktop has a **MicroVM Workshop** launcher. It opens
+`http://host.docker.internal:4317/` on macOS (or `127.0.0.1` on Linux) in the
+container's Firefox. To open the index and each app and capture a screenshot:
+
+```bash
+./scripts/demo-fixtures.sh
+# runs/shots/workshop-index.png
+# runs/shots/workshop-onboarding.png
+# runs/shots/workshop-support.png
+# runs/shots/workshop-booking.png
+```
+
+Inside the image, `/usr/local/bin/codex` is the real CLI (pinned in the
+Dockerfile with its SHA256). `/workspace/bin/codex` remains the lab
+`exec-server` shim. Do not replace it.
+
+The repo pins Node 22 through `.tool-versions`. Install the host Codex CLI into
+that same Node so the dashboard can spawn it:
+
+```bash
+npm install -g @openai/codex@0.167.1
+codex --version
+```
 
 ## Run the demo
 
