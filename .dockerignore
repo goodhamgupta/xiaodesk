@@ -1,0 +1,12 @@
+.git
+.gitignore
+node_modules
+**/node_modules
+runs
+images
+.cachebro
+.DS_Store
+apps/fixtures/data
+*.db
+*.db-shm
+*.db-wal

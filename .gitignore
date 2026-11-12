@@ -29,6 +29,7 @@ images/preview-qemu.pid
 images/*.pid
 images/guest-screen.png
 .DS_Store
+.cachebro
 playwright-report
 test-results
 *.tsbuildinfo
