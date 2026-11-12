@@ -1,0 +1,7 @@
+# Codex inside the workshop-neko image talks to the Cua Driver daemon that
+# runs in this same desktop session. No docker exec: this file is read by the
+# container's own codex process through CODEX_HOME=/home/neko/.codex.
+[mcp_servers.cua-driver]
+command = "/home/neko/.local/bin/cua-driver"
+args = ["mcp"]
+env = { DISPLAY = ":99.0", HOME = "/home/neko", XDG_RUNTIME_DIR = "/tmp/runtime-neko" }

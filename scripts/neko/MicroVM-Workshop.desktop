@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=MicroVM Workshop
+Comment=Onboarding, support, and booking fixture apps
+Exec=/usr/local/bin/workshop-fixtures
+Icon=firefox-esr
+Terminal=false
+Categories=Development;
